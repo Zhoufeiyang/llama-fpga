@@ -22,7 +22,13 @@ mwr 0xff5e0200 0x0100
 rst -system
 */
 
-char region_0[second_bank] __attribute__((aligned (8192)));
+/*
+ * The PL address generator adds 0x00036000 to every region-0 weight read.
+ * Keep this buffer in a dedicated linker section so its address does not
+ * change with the GCC common-symbol default or with unrelated source edits.
+ */
+char region_0[second_bank]
+    __attribute__((section(".model_region_0"), aligned(8192)));
 
 u64 *region_1=0x800000000;
 
