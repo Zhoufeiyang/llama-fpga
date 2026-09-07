@@ -45,11 +45,12 @@ they are classified as unverified artifacts rather than a publication
 baseline.
 
 The imported KV260 `DataPath_xN.v` contains one compute core with four HP DMA
-ports. The currently active settings in `top/EdgeLLMInst.scala` select two
-cores with one DMA port per core. Regenerating Verilog from that entry point
-would therefore not reproduce the hardware currently connected by the KV260
-block design. A dedicated, checked generator entry point is required before
-P2 RTL changes begin.
+ports. `top/EdgeLLMKv260Config.scala` now records that topology, its 40-bit DDR
+command width, and address remap as an explicit platform contract used by
+`EdgeLLMInst`. The topology therefore aligns, but the imported RTL identifies
+SpinalHDL 1.10.2a while `scala/build.sbt` selects 1.11.0. Source-to-RTL
+reproducibility remains open until the version is reconciled and regenerated
+RTL passes interface, equivalence, synthesis, and timing checks.
 
 Historical FTDI registry entries identify COM8 and COM9, but neither port was
 enumerated during the current audit. Board validation must resume only after

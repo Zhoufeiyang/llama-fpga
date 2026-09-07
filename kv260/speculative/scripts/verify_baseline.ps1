@@ -6,7 +6,9 @@ param(
     [string]$XsaPath = 'D:\JSA paper\llama-fpga\kv260\kv260bd_wrapper.xsa',
     [string]$BitstreamPath = 'D:\JSA paper\outputs\kv260_upstream_fixed\kv260bd_wrapper.bit',
     [string]$NmPath = 'F:\Xilinx2022\Vitis\2022.2\gnu\aarch64\nt\aarch64-none\bin\aarch64-none-elf-nm.exe',
-    [string]$GeneratorPath = 'D:\JSA paper\llama-fpga\scala\src\main\scala\top\EdgeLLMInst.scala',
+    [string]$GeneratorPath = 'D:\JSA paper\llama-fpga\scala\src\main\scala\top\EdgeLLMKv260Config.scala',
+    [string]$GeneratorEntrypointPath = 'D:\JSA paper\llama-fpga\scala\src\main\scala\top\EdgeLLMInst.scala',
+    [string]$GeneratorBuildPath = 'D:\JSA paper\llama-fpga\scala\build.sbt',
     [string]$ImportedRtlPath = 'D:\JSA paper\llama-fpga\kv260\kv260_vivado\kv260_vivado.srcs\sources_1\imports\EdgeLLM\DataPath_xN.v',
     [string]$ExpectedModel0Sha256 = '45bb125d50787badcc6df85fd99ce499ea3a43e160dcee4d736f6fa1b5c2c093',
     [string]$ExpectedModel1Sha256 = '7e947c152ef71de1128248c25a5bda18c652e9356a3ed00c0953ea17ad294afe'
@@ -102,12 +104,22 @@ $rtlSourceAlignment = [ordered]@{
     checked = $false
     generator_core_count = $null
     generator_dma_split = $null
+    generator_cmd_addr_width = $null
     imported_rtl_core_count = $null
     imported_rtl_hp_port_count = $null
+    imported_rtl_addr_width = $null
+    generator_spinal_version = $null
+    imported_rtl_spinal_version = $null
+    entrypoint_uses_config = $false
+    topology_matches = $false
+    address_width_matches = $false
+    version_matches = $false
     matches = $false
 }
 
 if ((Test-Path -LiteralPath $GeneratorPath -PathType Leaf) -and
+    (Test-Path -LiteralPath $GeneratorEntrypointPath -PathType Leaf) -and
+    (Test-Path -LiteralPath $GeneratorBuildPath -PathType Leaf) -and
     (Test-Path -LiteralPath $ImportedRtlPath -PathType Leaf)) {
     $activeGeneratorText = (Get-Content -LiteralPath $GeneratorPath | Where-Object {
         -not $_.TrimStart().StartsWith('//')
@@ -118,12 +130,28 @@ if ((Test-Path -LiteralPath $GeneratorPath -PathType Leaf) -and
     $generatorDmaMatch = [regex]::Match(
         $activeGeneratorText, 'val\s+DMA_SPLIT\s*=\s*List\(([^)]*)\)'
     )
+    $generatorAddressMatch = [regex]::Match(
+        $activeGeneratorText, 'val\s+cmdAddrWidth\s*=\s*List\(([^)]*)\)'
+    )
+    $generatorEntrypointText = Get-Content -LiteralPath $GeneratorEntrypointPath -Raw
     $importedRtlText = Get-Content -LiteralPath $ImportedRtlPath -Raw
+    $generatorBuildText = (Get-Content -LiteralPath $GeneratorBuildPath | Where-Object {
+        -not $_.TrimStart().StartsWith('//')
+    }) -join "`n"
     $importedCoreMatches = [regex]::Matches(
         $importedRtlText, 'DataPath\s+coreArea_(\d+)_core\s*\('
     )
     $importedHpMatches = [regex]::Matches(
         $importedRtlText, 'output\s+wire\s+m_axi_hp_0_(\d+)_arvalid'
+    )
+    $importedAddressMatches = [regex]::Matches(
+        $importedRtlText, 'output\s+wire\s+\[(\d+):0\]\s+m_axi_hp_0_\d+_araddr'
+    )
+    $generatorVersionMatch = [regex]::Match(
+        $generatorBuildText, 'val\s+spinalVersion\s*=\s*"([^"]+)"'
+    )
+    $importedVersionMatch = [regex]::Match(
+        $importedRtlText, 'Generator\s*:\s*SpinalHDL\s+v([^\s]+)'
     )
 
     $generatorCoreCount = if ($generatorCoreMatch.Success) {
@@ -131,10 +159,17 @@ if ((Test-Path -LiteralPath $GeneratorPath -PathType Leaf) -and
     } else {
         $null
     }
-    $generatorDmaSplit = if ($generatorDmaMatch.Success) {
-        @($generatorDmaMatch.Groups[1].Value -split ',' | ForEach-Object {
+    [int[]]$generatorDmaSplit = if ($generatorDmaMatch.Success) {
+        $generatorDmaMatch.Groups[1].Value -split ',' | ForEach-Object {
             [int]$_.Trim()
-        })
+        }
+    } else {
+        @()
+    }
+    [int[]]$generatorAddressWidths = if ($generatorAddressMatch.Success) {
+        $generatorAddressMatch.Groups[1].Value -split ',' | ForEach-Object {
+            [int]$_.Trim()
+        }
     } else {
         @()
     }
@@ -144,19 +179,65 @@ if ((Test-Path -LiteralPath $GeneratorPath -PathType Leaf) -and
     $importedHpIds = @($importedHpMatches | ForEach-Object {
         [int]$_.Groups[1].Value
     } | Sort-Object -Unique)
+    $importedAddressWidths = @($importedAddressMatches | ForEach-Object {
+        [int]$_.Groups[1].Value + 1
+    } | Sort-Object -Unique)
 
     $rtlSourceAlignment.checked = $true
     $rtlSourceAlignment.generator_core_count = $generatorCoreCount
     $rtlSourceAlignment.generator_dma_split = $generatorDmaSplit
+    $rtlSourceAlignment.generator_cmd_addr_width = $generatorAddressWidths
     $rtlSourceAlignment.imported_rtl_core_count = $importedCoreIds.Count
     $rtlSourceAlignment.imported_rtl_hp_port_count = $importedHpIds.Count
-    $rtlSourceAlignment.matches =
+    $rtlSourceAlignment.imported_rtl_addr_width = $importedAddressWidths
+    $rtlSourceAlignment.generator_spinal_version = if ($generatorVersionMatch.Success) {
+        $generatorVersionMatch.Groups[1].Value
+    } else {
+        $null
+    }
+    $rtlSourceAlignment.imported_rtl_spinal_version = if ($importedVersionMatch.Success) {
+        $importedVersionMatch.Groups[1].Value
+    } else {
+        $null
+    }
+    $rtlSourceAlignment.entrypoint_uses_config = [regex]::IsMatch(
+        $generatorEntrypointText, 'import\s+EdgeLLMKv260Config\._'
+    )
+    $rtlSourceAlignment.topology_matches =
         ($generatorCoreCount -eq $importedCoreIds.Count) -and
         (($generatorDmaSplit | Measure-Object -Sum).Sum -eq $importedHpIds.Count)
+    $rtlSourceAlignment.address_width_matches =
+        ($generatorAddressWidths.Count -eq $generatorCoreCount) -and
+        ($importedAddressWidths.Count -eq 1) -and
+        (($generatorAddressWidths | Where-Object {
+            $_ -ne $importedAddressWidths[0]
+        }).Count -eq 0)
+    $rtlSourceAlignment.version_matches =
+        $generatorVersionMatch.Success -and
+        $importedVersionMatch.Success -and
+        ($generatorVersionMatch.Groups[1].Value -eq $importedVersionMatch.Groups[1].Value)
+    $rtlSourceAlignment.matches =
+        $rtlSourceAlignment.entrypoint_uses_config -and
+        $rtlSourceAlignment.topology_matches -and
+        $rtlSourceAlignment.address_width_matches -and
+        $rtlSourceAlignment.version_matches
 
-    if (-not $rtlSourceAlignment.matches) {
+    if (-not $rtlSourceAlignment.entrypoint_uses_config) {
+        $errors.Add('SpinalHDL entry point does not use EdgeLLMKv260Config')
+    }
+    if (-not $rtlSourceAlignment.topology_matches) {
         $errors.Add(
             'Active SpinalHDL generator topology does not reproduce the imported KV260 RTL'
+        )
+    }
+    if (-not $rtlSourceAlignment.version_matches) {
+        $errors.Add(
+            'Configured SpinalHDL version does not match the imported KV260 RTL generator version'
+        )
+    }
+    if (-not $rtlSourceAlignment.address_width_matches) {
+        $errors.Add(
+            'Configured command address width does not match the imported KV260 RTL'
         )
     }
 } else {

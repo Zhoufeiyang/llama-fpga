@@ -7,47 +7,7 @@ import scala.language.postfixOps
 object EdgeLLMInst extends App {
 
   import cfgGen.LLaMA2_7B._
-
-  //  val DMA_SPLIT = List(4)
-  //  val baseAddr = List(0)
-  //  val cmdAddrWidth = List(40)
-  //  val splitBaseAddr = List((BigInt(0x800000000L), BigInt(0x36000)))
-  //  val numOfCore = 1
-  //  val sync = true
-  //  val resetLowPolarity = true
-
-  //  val DMA_SPLIT = List(1)
-  //  val baseAddr = List(0)
-  //  val cmdAddrWidth = List(32)
-  //  val splitBaseAddr = List((BigInt(0), BigInt(0)))
-  //  val numOfCore = 1
-  //  val sync = true
-  //  val resetLowPolarity = false
-
-  //  val DMA_SPLIT = List(4, 1)
-  //  val baseAddr = List(0x36000, 0)
-  //  val cmdAddrWidth = List(32, 32)
-  //  val splitBaseAddr = List((BigInt(0), BigInt(0)), (BigInt(0), BigInt(0)))
-  //  val numOfCore = 2
-  //  val sync = true
-  //  val resetLowPolarity = false
-
-  //  val DMA_SPLIT = List(1, 1, 1, 1)
-  //  val baseAddr = List(0, 0, 0, 0)
-  //  val cmdAddrWidth = List(32, 32, 32, 32)
-  //  val splitBaseAddr = List((BigInt(0), BigInt(0)), (BigInt(0), BigInt(0)), (BigInt(0), BigInt(0)), (BigInt(0), BigInt(0)))
-  //  val numOfCore = 4
-  //  val sync = false
-  //  val resetLowPolarity = false
-  // remember to change the mlpDim configuration
-
-  val DMA_SPLIT = List(1, 1)
-  val baseAddr = List(0, 0)
-  val cmdAddrWidth = List(32, 32)
-  val splitBaseAddr = List((BigInt(0), BigInt(0)), (BigInt(0), BigInt(0)))
-  val numOfCore = 2
-  val sync = false
-  val resetLowPolarity = false
+  import EdgeLLMKv260Config._
 
   val busWidth = 512
   val sgSplit = 4
