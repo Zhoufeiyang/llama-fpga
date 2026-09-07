@@ -32,6 +32,8 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P0: NO-GO`
 
+`P1 reference-layout sub-gate: GO (synthetic vectors)`
+
 The repository baseline is commit `df89b67e50383f4716e03aac35d6a25a35b0f98e`.
 The fixed-linker application exists, but no board log currently demonstrates
 correct raw-token generation with that application.
@@ -59,3 +61,14 @@ the cable and board are present.
   slack.
 
 Run `scripts/verify_baseline.ps1` for the host-side portion of this gate.
+
+## P1 reference-model status
+
+The standalone NumPy model under `reference/` mirrors the checked-in dense W4
+packer, including nibble order, scale/zero placement, and the exponent edit in
+`util.Fp16ScaleDown`. Its synthetic-vector unit tests cover `K = 1..4` and the
+contract that packed target-weight traffic is independent of K.
+
+This sub-gate does not override P0. Testing against approved real model blocks
+and board outputs remains pending until the model provenance and board
+connection are restored.
