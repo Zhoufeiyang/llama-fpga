@@ -6,6 +6,10 @@ try:
     from .w4_reference import (
         DenseW4Matrix,
         decode_dense_w4,
+        dma_join_bytes,
+        dma_join_pages,
+        dma_split_bytes,
+        dma_split_pages,
         encode_dense_w4,
         fp16_scale_down,
         gemm_reference,
@@ -19,6 +23,10 @@ except ImportError:
     from w4_reference import (
         DenseW4Matrix,
         decode_dense_w4,
+        dma_join_bytes,
+        dma_join_pages,
+        dma_split_bytes,
+        dma_split_pages,
         encode_dense_w4,
         fp16_scale_down,
         gemm_reference,
@@ -57,6 +65,43 @@ class DenseW4ReferenceTest(unittest.TestCase):
         self.assertEqual(packed[0], 0x10)
         self.assertEqual(packed[-1], 0xFE)
         np.testing.assert_array_equal(unpack_u4(packed, values.size), values)
+
+    def test_dma_split_fixed_lane_order(self) -> None:
+        source = bytes(range(8))
+        split = dma_split_bytes(source, bus_width_bits=32, split=2)
+        self.assertEqual(split, bytes([0, 1, 4, 5, 2, 3, 6, 7]))
+        self.assertEqual(dma_join_bytes(split, 32, 2), source)
+
+    def test_dma_page_round_trip_with_final_padding(self) -> None:
+        source = bytes(range(192))
+        stored = dma_split_pages(
+            source, bus_width_bits=512, split=4, page_size=128
+        )
+        self.assertEqual(len(stored), 256)
+        self.assertEqual(stored[192:], bytes(64))
+        self.assertEqual(
+            dma_join_pages(
+                stored,
+                original_size=len(source),
+                bus_width_bits=512,
+                split=4,
+                page_size=128,
+            ),
+            source,
+        )
+
+    def test_dma_page_decoder_rejects_nonzero_padding(self) -> None:
+        source = bytes(range(64))
+        stored = bytearray(
+            dma_split_pages(source, bus_width_bits=512, split=4, page_size=128)
+        )
+        stored[-1] = 1
+        with self.assertRaisesRegex(ValueError, "nonzero bytes"):
+            dma_join_pages(bytes(stored), len(source), 512, 4, 128)
+
+    def test_dma_transform_rejects_partial_bus_beat(self) -> None:
+        with self.assertRaisesRegex(ValueError, "multiple of the bus width"):
+            dma_split_bytes(bytes(63), bus_width_bits=512, split=4)
 
     def test_dense_layout_round_trip(self) -> None:
         packed = encode_dense_w4(self.matrix)

@@ -15,6 +15,106 @@ import numpy as np
 ROWS_PER_ZERO_BLOCK = 4
 
 
+def _dma_geometry(bus_width_bits: int, split: int) -> tuple[int, int]:
+    if bus_width_bits <= 0 or bus_width_bits % 8:
+        raise ValueError("bus_width_bits must be a positive multiple of eight")
+    bus_bytes = bus_width_bits // 8
+    if split <= 0 or bus_bytes % split:
+        raise ValueError("split must be a positive divisor of the bus byte width")
+    return bus_bytes, bus_bytes // split
+
+
+def dma_split_bytes(data: bytes, bus_width_bits: int = 512, split: int = 4) -> bytes:
+    """Mirror model2bin.py's split-major DMA byte permutation.
+
+    Each input bus beat is divided into ``split`` contiguous lanes.  The file
+    layout stores all beats for lane zero first, then all beats for lane one,
+    and so on.  This is a permutation only; it does not add padding.
+    """
+
+    bus_bytes, lane_bytes = _dma_geometry(bus_width_bits, split)
+    source = np.frombuffer(data, dtype=np.uint8)
+    if source.size % bus_bytes:
+        raise ValueError("DMA payload length must be a multiple of the bus width")
+    if source.size == 0:
+        return b""
+    split_major = source.reshape(-1, split, lane_bytes).transpose(1, 0, 2)
+    return split_major.tobytes()
+
+
+def dma_join_bytes(data: bytes, bus_width_bits: int = 512, split: int = 4) -> bytes:
+    """Invert :func:`dma_split_bytes` and restore bus-beat byte order."""
+
+    bus_bytes, lane_bytes = _dma_geometry(bus_width_bits, split)
+    source = np.frombuffer(data, dtype=np.uint8)
+    if source.size % bus_bytes:
+        raise ValueError("DMA payload length must be a multiple of the bus width")
+    if source.size == 0:
+        return b""
+    beat_major = source.reshape(split, -1, lane_bytes).transpose(1, 0, 2)
+    return beat_major.tobytes()
+
+
+def dma_split_pages(
+    data: bytes,
+    bus_width_bits: int = 512,
+    split: int = 4,
+    page_size: int = 8192,
+) -> bytes:
+    """Mirror model2bin.py's page-local DMA permutation and zero padding."""
+
+    bus_bytes, _ = _dma_geometry(bus_width_bits, split)
+    if page_size <= 0 or page_size % bus_bytes:
+        raise ValueError("page_size must be a positive multiple of the bus width")
+    if len(data) == 0:
+        return b""
+
+    result = bytearray()
+    for offset in range(0, len(data), page_size):
+        page = data[offset : offset + page_size]
+        result.extend(dma_split_bytes(page, bus_width_bits, split))
+        result.extend(b"\x00" * (page_size - len(page)))
+    return bytes(result)
+
+
+def dma_join_pages(
+    data: bytes,
+    original_size: int,
+    bus_width_bits: int = 512,
+    split: int = 4,
+    page_size: int = 8192,
+    require_zero_padding: bool = True,
+) -> bytes:
+    """Recover logical bytes from a page-padded, split-major DMA region.
+
+    ``original_size`` is required because the model binary does not encode the
+    useful length in the page padding.  Rejecting nonzero padding catches an
+    incorrect offset or matrix extent before numerical comparison begins.
+    """
+
+    bus_bytes, _ = _dma_geometry(bus_width_bits, split)
+    if page_size <= 0 or page_size % bus_bytes:
+        raise ValueError("page_size must be a positive multiple of the bus width")
+    if original_size < 0 or original_size % bus_bytes:
+        raise ValueError("original_size must be a nonnegative bus-width multiple")
+    expected_size = (
+        0 if original_size == 0 else ((original_size + page_size - 1) // page_size) * page_size
+    )
+    if len(data) != expected_size:
+        raise ValueError(f"DMA region has {len(data)} bytes; expected {expected_size}")
+
+    result = bytearray()
+    remaining = original_size
+    for offset in range(0, len(data), page_size):
+        useful_size = min(page_size, remaining)
+        page = data[offset : offset + page_size]
+        result.extend(dma_join_bytes(page[:useful_size], bus_width_bits, split))
+        if require_zero_padding and any(page[useful_size:]):
+            raise ValueError("DMA region contains nonzero bytes in page padding")
+        remaining -= useful_size
+    return bytes(result)
+
+
 def pack_u4(values: np.ndarray) -> bytes:
     """Pack unsigned four-bit values, placing the first value in the low nibble."""
 
