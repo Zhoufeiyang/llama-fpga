@@ -44,6 +44,13 @@ checked-in `python/gen_bin.ipynb`. Until their exact provenance is established,
 they are classified as unverified artifacts rather than a publication
 baseline.
 
+The imported KV260 `DataPath_xN.v` contains one compute core with four HP DMA
+ports. The currently active settings in `top/EdgeLLMInst.scala` select two
+cores with one DMA port per core. Regenerating Verilog from that entry point
+would therefore not reproduce the hardware currently connected by the KV260
+block design. A dedicated, checked generator entry point is required before
+P2 RTL changes begin.
+
 Historical FTDI registry entries identify COM8 and COM9, but neither port was
 enumerated during the current audit. Board validation must resume only after
 the cable and board are present.
@@ -52,6 +59,7 @@ the cable and board are present.
 
 - Vivado and Vitis are both version 2022.2.
 - XSA, bitstream, PS initialization, BSP, and ELF have recorded provenance.
+- The SpinalHDL generator configuration reproduces the imported RTL topology.
 - `region_0` is linked at `0x00036000` with size `0x722b4000`.
 - Model byte counts and approved hashes match.
 - Fixed input token IDs produce finite logits and the approved raw output IDs.

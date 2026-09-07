@@ -6,6 +6,8 @@ param(
     [string]$XsaPath = 'D:\JSA paper\llama-fpga\kv260\kv260bd_wrapper.xsa',
     [string]$BitstreamPath = 'D:\JSA paper\outputs\kv260_upstream_fixed\kv260bd_wrapper.bit',
     [string]$NmPath = 'F:\Xilinx2022\Vitis\2022.2\gnu\aarch64\nt\aarch64-none\bin\aarch64-none-elf-nm.exe',
+    [string]$GeneratorPath = 'D:\JSA paper\llama-fpga\scala\src\main\scala\top\EdgeLLMInst.scala',
+    [string]$ImportedRtlPath = 'D:\JSA paper\llama-fpga\kv260\kv260_vivado\kv260_vivado.srcs\sources_1\imports\EdgeLLM\DataPath_xN.v',
     [string]$ExpectedModel0Sha256 = '45bb125d50787badcc6df85fd99ce499ea3a43e160dcee4d736f6fa1b5c2c093',
     [string]$ExpectedModel1Sha256 = '7e947c152ef71de1128248c25a5bda18c652e9356a3ed00c0953ea17ad294afe'
 )
@@ -96,6 +98,71 @@ $region0Record = [ordered]@{
     matches = $false
 }
 
+$rtlSourceAlignment = [ordered]@{
+    checked = $false
+    generator_core_count = $null
+    generator_dma_split = $null
+    imported_rtl_core_count = $null
+    imported_rtl_hp_port_count = $null
+    matches = $false
+}
+
+if ((Test-Path -LiteralPath $GeneratorPath -PathType Leaf) -and
+    (Test-Path -LiteralPath $ImportedRtlPath -PathType Leaf)) {
+    $activeGeneratorText = (Get-Content -LiteralPath $GeneratorPath | Where-Object {
+        -not $_.TrimStart().StartsWith('//')
+    }) -join "`n"
+    $generatorCoreMatch = [regex]::Match(
+        $activeGeneratorText, 'val\s+numOfCore\s*=\s*(\d+)'
+    )
+    $generatorDmaMatch = [regex]::Match(
+        $activeGeneratorText, 'val\s+DMA_SPLIT\s*=\s*List\(([^)]*)\)'
+    )
+    $importedRtlText = Get-Content -LiteralPath $ImportedRtlPath -Raw
+    $importedCoreMatches = [regex]::Matches(
+        $importedRtlText, 'DataPath\s+coreArea_(\d+)_core\s*\('
+    )
+    $importedHpMatches = [regex]::Matches(
+        $importedRtlText, 'output\s+wire\s+m_axi_hp_0_(\d+)_arvalid'
+    )
+
+    $generatorCoreCount = if ($generatorCoreMatch.Success) {
+        [int]$generatorCoreMatch.Groups[1].Value
+    } else {
+        $null
+    }
+    $generatorDmaSplit = if ($generatorDmaMatch.Success) {
+        @($generatorDmaMatch.Groups[1].Value -split ',' | ForEach-Object {
+            [int]$_.Trim()
+        })
+    } else {
+        @()
+    }
+    $importedCoreIds = @($importedCoreMatches | ForEach-Object {
+        [int]$_.Groups[1].Value
+    } | Sort-Object -Unique)
+    $importedHpIds = @($importedHpMatches | ForEach-Object {
+        [int]$_.Groups[1].Value
+    } | Sort-Object -Unique)
+
+    $rtlSourceAlignment.checked = $true
+    $rtlSourceAlignment.generator_core_count = $generatorCoreCount
+    $rtlSourceAlignment.generator_dma_split = $generatorDmaSplit
+    $rtlSourceAlignment.imported_rtl_core_count = $importedCoreIds.Count
+    $rtlSourceAlignment.imported_rtl_hp_port_count = $importedHpIds.Count
+    $rtlSourceAlignment.matches =
+        ($generatorCoreCount -eq $importedCoreIds.Count) -and
+        (($generatorDmaSplit | Measure-Object -Sum).Sum -eq $importedHpIds.Count)
+
+    if (-not $rtlSourceAlignment.matches) {
+        $errors.Add(
+            'Active SpinalHDL generator topology does not reproduce the imported KV260 RTL'
+        )
+    }
+} else {
+    $errors.Add('Unable to compare the SpinalHDL generator with the imported KV260 RTL')
+}
+
 if ((Test-Path -LiteralPath $NmPath -PathType Leaf) -and (Test-Path -LiteralPath $ElfPath -PathType Leaf)) {
     $nmLine = & $NmPath -n -S $ElfPath | Select-String -Pattern '\sregion_0$' | Select-Object -First 1
     $region0Record.checked = $true
@@ -141,6 +208,7 @@ $result = [ordered]@{
     }
     artifacts = $artifacts
     region0 = $region0Record
+    rtl_source_alignment = $rtlSourceAlignment
     serial = [ordered]@{
         detected_ports = $detectedPorts
         historical_kv260_ports_present = $ftdiConsolePresent
