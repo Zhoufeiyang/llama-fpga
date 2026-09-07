@@ -1,0 +1,156 @@
+param(
+    [string]$Model0Path = 'D:\JSA paper\work\llama0.bin',
+    [string]$Model1Path = 'D:\JSA paper\work\llama1.bin',
+    [string]$TokenizerPath = 'D:\JSA paper\work\tkz.bin',
+    [string]$ElfPath = 'D:\JSA paper\outputs\kv260_upstream_fixed\llama_upstream_region0_fixed.elf',
+    [string]$XsaPath = 'D:\JSA paper\llama-fpga\kv260\kv260bd_wrapper.xsa',
+    [string]$BitstreamPath = 'D:\JSA paper\outputs\kv260_upstream_fixed\kv260bd_wrapper.bit',
+    [string]$NmPath = 'F:\Xilinx2022\Vitis\2022.2\gnu\aarch64\nt\aarch64-none\bin\aarch64-none-elf-nm.exe',
+    [string]$ExpectedModel0Sha256 = '45bb125d50787badcc6df85fd99ce499ea3a43e160dcee4d736f6fa1b5c2c093',
+    [string]$ExpectedModel1Sha256 = '7e947c152ef71de1128248c25a5bda18c652e9356a3ed00c0953ea17ad294afe'
+)
+
+$ErrorActionPreference = 'Stop'
+
+$expectedModel0Bytes = 2109472768L
+$expectedModel1Bytes = 1915437056L
+$expectedRegion0Address = '0000000000036000'
+$expectedRegion0Size = '00000000722b4000'
+
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
+$errors = [System.Collections.Generic.List[string]]::new()
+$warnings = [System.Collections.Generic.List[string]]::new()
+
+function Get-ArtifactRecord {
+    param(
+        [string]$Path,
+        [long]$ExpectedBytes = -1,
+        [string]$ExpectedSha256,
+        [bool]$Required = $true
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        $message = "Missing artifact: $Path"
+        if ($Required) {
+            $script:errors.Add($message)
+        } else {
+            $script:warnings.Add($message)
+        }
+        return [ordered]@{
+            path = $Path
+            present = $false
+        }
+    }
+
+    $item = Get-Item -LiteralPath $Path
+    $hash = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    $sizeMatches = $null
+    $hashMatches = $null
+
+    if ($ExpectedBytes -ge 0) {
+        $sizeMatches = $item.Length -eq $ExpectedBytes
+        if (-not $sizeMatches) {
+            $script:errors.Add("Unexpected byte count for ${Path}: $($item.Length)")
+        }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedSha256)) {
+        $hashMatches = $hash -eq $ExpectedSha256.ToLowerInvariant()
+        if (-not $hashMatches) {
+            $script:errors.Add("Unexpected SHA256 for ${Path}: $hash")
+        }
+    }
+
+    return [ordered]@{
+        path = $item.FullName
+        present = $true
+        bytes = $item.Length
+        sha256 = $hash
+        size_matches = $sizeMatches
+        hash_matches = $hashMatches
+        last_write_time = $item.LastWriteTime.ToString('o')
+    }
+}
+
+Push-Location $repoRoot
+try {
+    $repoCommit = (git rev-parse HEAD).Trim()
+    $repoBranch = (git branch --show-current).Trim()
+    $repoStatus = @(git status --short)
+} finally {
+    Pop-Location
+}
+
+$artifacts = [ordered]@{}
+$artifacts.model0 = Get-ArtifactRecord -Path $Model0Path -ExpectedBytes $expectedModel0Bytes -ExpectedSha256 $ExpectedModel0Sha256
+$artifacts.model1 = Get-ArtifactRecord -Path $Model1Path -ExpectedBytes $expectedModel1Bytes -ExpectedSha256 $ExpectedModel1Sha256
+$artifacts.tokenizer = Get-ArtifactRecord -Path $TokenizerPath -ExpectedBytes -1 -ExpectedSha256 '' -Required $false
+$artifacts.xsa = Get-ArtifactRecord -Path $XsaPath -ExpectedBytes -1 -ExpectedSha256 ''
+$artifacts.bitstream = Get-ArtifactRecord -Path $BitstreamPath -ExpectedBytes -1 -ExpectedSha256 ''
+$artifacts.elf = Get-ArtifactRecord -Path $ElfPath -ExpectedBytes -1 -ExpectedSha256 ''
+
+$region0Record = [ordered]@{
+    checked = $false
+    address = $null
+    size = $null
+    matches = $false
+}
+
+if ((Test-Path -LiteralPath $NmPath -PathType Leaf) -and (Test-Path -LiteralPath $ElfPath -PathType Leaf)) {
+    $nmLine = & $NmPath -n -S $ElfPath | Select-String -Pattern '\sregion_0$' | Select-Object -First 1
+    $region0Record.checked = $true
+    if ($null -eq $nmLine) {
+        $errors.Add('ELF does not export a region_0 symbol')
+    } else {
+        $fields = ($nmLine.Line.Trim() -split '\s+')
+        $region0Record.address = $fields[0].ToLowerInvariant()
+        $region0Record.size = $fields[1].ToLowerInvariant()
+        $region0Record.matches = ($region0Record.address -eq $expectedRegion0Address) -and
+            ($region0Record.size -eq $expectedRegion0Size)
+        if (-not $region0Record.matches) {
+            $errors.Add("region_0 mismatch: address=$($region0Record.address), size=$($region0Record.size)")
+        }
+    }
+} else {
+    $errors.Add('Unable to inspect region_0 because the ELF or nm tool is missing')
+}
+
+$detectedPorts = @([System.IO.Ports.SerialPort]::GetPortNames() | Sort-Object)
+$ftdiConsolePresent = ($detectedPorts -contains 'COM8') -or ($detectedPorts -contains 'COM9')
+if (-not $ftdiConsolePresent) {
+    $warnings.Add('Historical KV260 ports COM8/COM9 are not currently enumerated')
+}
+
+$result = [ordered]@{
+    schema_version = 1
+    gate = if ($errors.Count -eq 0) { 'P0_HOST_AUDIT_GO' } else { 'P0_HOST_AUDIT_NO_GO' }
+    timestamp = (Get-Date).ToString('o')
+    repository = [ordered]@{
+        root = $repoRoot
+        branch = $repoBranch
+        commit = $repoCommit
+        status = $repoStatus
+    }
+    expected = [ordered]@{
+        model0_bytes = $expectedModel0Bytes
+        model1_bytes = $expectedModel1Bytes
+        model0_sha256 = $ExpectedModel0Sha256.ToLowerInvariant()
+        model1_sha256 = $ExpectedModel1Sha256.ToLowerInvariant()
+        region0_address = $expectedRegion0Address
+        region0_size = $expectedRegion0Size
+    }
+    artifacts = $artifacts
+    region0 = $region0Record
+    serial = [ordered]@{
+        detected_ports = $detectedPorts
+        historical_kv260_ports_present = $ftdiConsolePresent
+    }
+    errors = @($errors)
+    warnings = @($warnings)
+}
+
+$result | ConvertTo-Json -Depth 8
+
+if ($errors.Count -ne 0) {
+    exit 1
+}
