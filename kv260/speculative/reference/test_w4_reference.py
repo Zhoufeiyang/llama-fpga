@@ -2,18 +2,32 @@ import unittest
 
 import numpy as np
 
-from w4_reference import (
-    DenseW4Matrix,
-    decode_dense_w4,
-    encode_dense_w4,
-    fp16_scale_down,
-    gemm_reference,
-    gemv_reference,
-    packed_dense_size,
-    pack_u4,
-    unpack_u4,
-    weight_stream_bytes,
-)
+try:
+    from .w4_reference import (
+        DenseW4Matrix,
+        decode_dense_w4,
+        encode_dense_w4,
+        fp16_scale_down,
+        gemm_reference,
+        gemv_reference,
+        packed_dense_size,
+        pack_u4,
+        unpack_u4,
+        weight_stream_bytes,
+    )
+except ImportError:
+    from w4_reference import (
+        DenseW4Matrix,
+        decode_dense_w4,
+        encode_dense_w4,
+        fp16_scale_down,
+        gemm_reference,
+        gemv_reference,
+        packed_dense_size,
+        pack_u4,
+        unpack_u4,
+        weight_stream_bytes,
+    )
 
 
 class DenseW4ReferenceTest(unittest.TestCase):
