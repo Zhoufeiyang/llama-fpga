@@ -9,7 +9,9 @@ ThisBuild / scalacOptions += "-target:jvm-1.8"
 // SpinalHDL
 //val spinalVersion = "1.8.0b"
 //val spinalVersion = "1.9.0"
-val spinalVersion = "1.11.0"
+// Keep the generator toolchain aligned with the checked-in KV260 RTL header.
+// A version change requires RTL regeneration plus interface/equivalence checks.
+val spinalVersion = "1.10.2a"
 val spinalCore = "com.github.spinalhdl" %% "spinalhdl-core" % spinalVersion
 val spinalLib = "com.github.spinalhdl" %% "spinalhdl-lib" % spinalVersion
 val spinalIdslPlugin = compilerPlugin(

@@ -38,40 +38,43 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P0 sampled SD-to-DDR sub-gate: GO`
 
-`P0 SD-artifact provenance sub-gate: NO-GO (host/SD one-byte mismatch)`
+`P0 model-artifact provenance sub-gate: GO`
 
 `P1 reference-layout sub-gate: GO (synthetic vectors)`
+
+`P1 real-weight-block sub-gate: GO`
+
+`P1 RTL-layout-simulation sub-gate: GO`
+
+`P1: GO`
 
 The repository baseline is commit `df89b67e50383f4716e03aac35d6a25a35b0f98e`.
 The fixed-linker application now completes end-to-end generation on KV260.
 Three reset-and-run trials on 2026-09-08 produced identical normalized response
 SHA256 `2c8b802fb09fee4d538f84127b5f319b660fcb3bc0f5802e6e363004d531428c`
 for the fixed prompt. See `evidence/p0-board-functional-20260908.md`.
-AXI-response, approved model provenance, and exact-bitstream timing evidence
-remain pending, so this result does not promote the overall P0 gate to GO.
+AXI-response and exact-bitstream timing evidence remain pending, so this result
+does not promote the overall P0 gate to GO.
 
 The PS-only diagnostic run then proved exact FatFS byte counts and captured a
 690-token, zero-free, EOS-terminated raw-ID sequence whose decoded response
-matches the three-run baseline. Five of six sparse model probes match the host
-files. The `llama0.bin` middle probe differs by one byte (`0xBA` in the
-available host copy, `0xCA` on SD and in board DDR). Direct SD-window and JTAG
-DDR reads prove that the sampled SD-to-DDR transfer is correct; the SD artifact
-itself differs from the host copy. See
+matches the three-run baseline. Direct SD-window and JTAG DDR reads proved the
+sampled SD-to-DDR transfer. The host model artifacts were refreshed and, on
+2026-09-08, both byte counts and SHA256 values matched the approved notebook
+manifest. See
 `evidence/p0-storage-token-diagnostics-20260908.md`.
 
-The locally available model files have the expected byte counts but do not
-match the SHA256 values recorded for `llama0.bin` and `llama1.bin` in the
-checked-in `python/gen_bin.ipynb`. Until their exact provenance is established,
-they are classified as unverified artifacts rather than a publication
-baseline.
+The approved host model artifacts are `llama0.bin` SHA256
+`45bb125d50787badcc6df85fd99ce499ea3a43e160dcee4d736f6fa1b5c2c093` and
+`llama1.bin` SHA256
+`7e947c152ef71de1128248c25a5bda18c652e9356a3ed00c0953ea17ad294afe`.
 
 The imported KV260 `DataPath_xN.v` contains one compute core with four HP DMA
 ports. `top/EdgeLLMKv260Config.scala` now records that topology, its 40-bit DDR
 command width, and address remap as an explicit platform contract used by
-`EdgeLLMInst`. The topology therefore aligns, but the imported RTL identifies
-SpinalHDL 1.10.2a while `scala/build.sbt` selects 1.11.0. Source-to-RTL
-reproducibility remains open until the version is reconciled and regenerated
-RTL passes interface, equivalence, synthesis, and timing checks.
+`EdgeLLMInst`. `scala/build.sbt` is pinned to the imported RTL generator
+version, SpinalHDL 1.10.2a. Full source-to-RTL reproduction remains open until
+regenerated RTL passes interface, equivalence, synthesis, and timing checks.
 
 COM8 and COM9 were enumerated on 2026-09-08. JTAG identified cable
 `Xilinx X-MLCC-01 XFL1FVVDTE2WA`, FPGA `xck26` IDCODE `04724093`, and ARM DAP
@@ -99,6 +102,8 @@ packer, including nibble order, scale/zero placement, and the exponent edit in
 `util.Fp16ScaleDown`. Its synthetic-vector unit tests cover `K = 1..4` and the
 contract that packed target-weight traffic is independent of K.
 
-This sub-gate does not override P0. Testing against approved real model blocks
-and board outputs remains pending until the model provenance and board
-connection are restored.
+The approved layer-0/head-0 Q projection block passes full-image provenance,
+page-local DMA inversion, W4 decode/re-encode, and stored-byte reconstruction.
+Vivado xsim 2022.2 independently checks its first two 512-bit beats, nibble
+order, and FP16 scale byte order. See `evidence/p1-reference-20260908.md`.
+P1 is GO, but it does not override the P0 prerequisite for P2 production RTL.

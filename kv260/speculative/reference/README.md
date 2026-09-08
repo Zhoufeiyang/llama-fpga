@@ -27,3 +27,22 @@ DDR offset is rejected early.
 
 Synthetic-vector success is only the P1 layout sub-gate. P1 is complete after
 approved real packed blocks and RTL simulation outputs have also been checked.
+
+Verify the approved `llama0.bin` artifact and its first layer Q-head block:
+
+```powershell
+python verify_real_w4_block.py D:\path\to\llama0.bin --output evidence.json
+```
+
+The verifier checks the whole-image SHA256 before using the block, then proves
+both logical W4 encode/decode identity and stored page-local DMA layout identity.
+
+Run the independent SystemVerilog check of the approved real-vector prefix:
+
+```powershell
+& .\rtl\run_xsim.ps1
+```
+
+The testbench checks four-lane DMA reconstruction, W4 low-nibble-first order,
+and little-endian FP16 scale placement. It is verification-only RTL and is not
+part of the production P2 datapath.
