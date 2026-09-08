@@ -32,11 +32,17 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P0: NO-GO`
 
+`P0 board-functional sub-gate: GO (3/3 deterministic reset-and-run trials)`
+
 `P1 reference-layout sub-gate: GO (synthetic vectors)`
 
 The repository baseline is commit `df89b67e50383f4716e03aac35d6a25a35b0f98e`.
-The fixed-linker application exists, but no board log currently demonstrates
-correct raw-token generation with that application.
+The fixed-linker application now completes end-to-end generation on KV260.
+Three reset-and-run trials on 2026-09-08 produced identical normalized response
+SHA256 `2c8b802fb09fee4d538f84127b5f319b660fcb3bc0f5802e6e363004d531428c`
+for the fixed prompt. See `evidence/p0-board-functional-20260908.md`. Raw-token,
+explicit transfer-length/DDR, AXI-response, and exact-bitstream timing evidence
+remain pending, so this result does not promote the overall P0 gate to GO.
 
 The locally available model files have the expected byte counts but do not
 match the SHA256 values recorded for `llama0.bin` and `llama1.bin` in the
