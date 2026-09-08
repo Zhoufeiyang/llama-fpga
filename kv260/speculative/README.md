@@ -34,6 +34,10 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P0 board-functional sub-gate: GO (3/3 deterministic reset-and-run trials)`
 
+`P0 read-length/raw-token sub-gate: GO`
+
+`P0 host-to-DDR sparse-probe sub-gate: NO-GO (one-byte mismatch)`
+
 `P1 reference-layout sub-gate: GO (synthetic vectors)`
 
 The repository baseline is commit `df89b67e50383f4716e03aac35d6a25a35b0f98e`.
@@ -43,6 +47,13 @@ SHA256 `2c8b802fb09fee4d538f84127b5f319b660fcb3bc0f5802e6e363004d531428c`
 for the fixed prompt. See `evidence/p0-board-functional-20260908.md`. Raw-token,
 explicit transfer-length/DDR, AXI-response, and exact-bitstream timing evidence
 remain pending, so this result does not promote the overall P0 gate to GO.
+
+The PS-only diagnostic run then proved exact FatFS byte counts and captured a
+690-token, zero-free, EOS-terminated raw-ID sequence whose decoded response
+matches the three-run baseline. Five of six sparse model probes match the host
+files. The `llama0.bin` middle probe differs by one byte (`0xBA` on the host,
+`0xCA` in board DDR), confirmed by direct JTAG memory read. See
+`evidence/p0-storage-token-diagnostics-20260908.md`.
 
 The locally available model files have the expected byte counts but do not
 match the SHA256 values recorded for `llama0.bin` and `llama1.bin` in the

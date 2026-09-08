@@ -30,7 +30,7 @@ rst -system
 char region_0[second_bank]
     __attribute__((section(".model_region_0"), aligned(8192)));
 
-u64 *region_1=0x800000000;
+u8 *region_1 = (u8 *)(UINTPTR)0x800000000ULL;
 
 FIL fil;
 FATFS fatfs;
@@ -69,6 +69,7 @@ int num_prompt_tokens = 14;
 #define MAX_PROMPT_LEN 64
 #define MAX_DECODE_LEN 1000
 #define NUM_TURN 16
+#define MODEL_PROBE_BYTES 64
 
 char *tokenizer_path = "tkz.bin";
 char prompt[MAX_PROMPT_LEN];
@@ -82,6 +83,25 @@ void sort_vocab(Tokenizer* t);
 void encode(Tokenizer* t, char *text, int bos, int eos, int *tokens, int *n_tokens);
 char* decode(Tokenizer* t, int prev_token, int token);
 void safe_printf(char *piece);
+
+static u32 fnv1a32(const volatile u8 *data, u32 length)
+{
+    u32 hash = 2166136261U;
+    for (u32 i = 0; i < length; i++) {
+        hash ^= data[i];
+        hash *= 16777619U;
+    }
+    return hash;
+}
+
+static void print_model_probe(const char *file_name, u64 base, u32 offset)
+{
+    const u64 address = base + offset;
+    Xil_DCacheInvalidateRange((INTPTR)address, MODEL_PROBE_BYTES);
+    printf("MODEL_PROBE file=%s offset=%u bytes=%u fnv1a32=%08x\n",
+           file_name, offset, MODEL_PROBE_BYTES,
+           fnv1a32((const volatile u8 *)address, MODEL_PROBE_BYTES));
+}
 
 int main()
 {
@@ -131,7 +151,13 @@ int main()
     response = f_open(&fil, "llama0.bin", FA_OPEN_EXISTING|FA_READ);
     printf("%d\n", response);
     response = f_read(&fil, region_1, first_bank, &wr_tot);
-    printf("%d\n", response);
+    u32 llama0_read = wr_tot;
+    printf("MODEL_READ file=llama0.bin status=%d requested=%u actual=%u\n",
+           response, first_bank, llama0_read);
+    if (response != FR_OK || llama0_read != first_bank) {
+        printf("MODEL_READ_FAILED file=llama0.bin\n");
+        return 0;
+    }
     response = f_close(&fil);
     printf("%d\n", response);
     XTime_GetTime(&tEnd);
@@ -143,7 +169,13 @@ int main()
     response = f_open(&fil, "llama1.bin", FA_OPEN_EXISTING|FA_READ);
     printf("%d\n", response);
     response = f_read(&fil, region_0, second_bank, &wr_tot);
-    printf("%d\n", response);
+    u32 llama1_read = wr_tot;
+    printf("MODEL_READ file=llama1.bin status=%d requested=%u actual=%u\n",
+           response, second_bank, llama1_read);
+    if (response != FR_OK || llama1_read != second_bank) {
+        printf("MODEL_READ_FAILED file=llama1.bin\n");
+        return 0;
+    }
     response = f_close(&fil);
     printf("%d\n", response);
     XTime_GetTime(&tEnd);
@@ -153,6 +185,15 @@ int main()
     printf("Load Finish!\n");
 
     Xil_DCacheFlush();
+
+    print_model_probe("llama0.bin", (u64)region_1, 0);
+    print_model_probe("llama0.bin", (u64)region_1, first_bank / 2);
+    print_model_probe("llama0.bin", (u64)region_1,
+                      first_bank - MODEL_PROBE_BYTES);
+    print_model_probe("llama1.bin", (u64)region_0, 0);
+    print_model_probe("llama1.bin", (u64)region_0, second_bank / 2);
+    print_model_probe("llama1.bin", (u64)region_0,
+                      second_bank - MODEL_PROBE_BYTES);
 
     printf("Init tokenizer...\n");
     Tokenizer tokenizer;
@@ -204,6 +245,10 @@ int main()
 		XTime_GetTime(&tEnd);
 		tUsed = ((tEnd - tCur) * 1000000) / (COUNTS_PER_SECOND);
 		printf("Encoding Process Elapsed %ld us\n", tUsed);
+		printf("PROMPT_TOKEN_COUNT %d\n", num_prompt_tokens);
+		for(int i=0;i<num_prompt_tokens;i++){
+			printf("PROMPT_TOKEN_ID index=%d id=%d\n", i, prompt_tokens[i]);
+		}
 		printf("LLM Response:\n");
 
 		token_cnt = 0;
@@ -228,6 +273,7 @@ int main()
 				currTk = Xil_In32(EDGELLM_BASE_ADDR+0x04);
 			}
 			decodeTk = (currTk>>16) & 0x7fff;
+			printf("RAW_TOKEN_ID index=%d id=%u\n", i, decodeTk);
 			token_cnt++;
 			Xil_Out32(EDGELLM_BASE_ADDR, 0x00090000+decodeTk);
 			Xil_Out32(EDGELLM_BASE_ADDR+0x80, 1);
