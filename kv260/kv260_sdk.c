@@ -103,6 +103,41 @@ static void print_model_probe(const char *file_name, u64 base, u32 offset)
            fnv1a32((const volatile u8 *)address, MODEL_PROBE_BYTES));
 }
 
+static int print_sd_probe(const char *file_name, u32 offset)
+{
+    u8 buffer[MODEL_PROBE_BYTES];
+    UINT bytes_read = 0;
+    FRESULT open_status = f_open(&fil, file_name, FA_OPEN_EXISTING | FA_READ);
+    FRESULT seek_status = FR_INVALID_OBJECT;
+    FRESULT read_status = FR_INVALID_OBJECT;
+    FRESULT close_status = FR_INVALID_OBJECT;
+
+    if (open_status == FR_OK) {
+        seek_status = f_lseek(&fil, offset);
+    }
+    if (seek_status == FR_OK) {
+        read_status = f_read(&fil, buffer, MODEL_PROBE_BYTES, &bytes_read);
+    }
+    if (open_status == FR_OK) {
+        close_status = f_close(&fil);
+    }
+
+    if (open_status != FR_OK || seek_status != FR_OK ||
+        read_status != FR_OK || close_status != FR_OK ||
+        bytes_read != MODEL_PROBE_BYTES) {
+        printf("SD_PROBE_FAILED file=%s offset=%u open=%d seek=%d read=%d "
+               "close=%d actual=%u\n",
+               file_name, offset, open_status, seek_status, read_status,
+               close_status, bytes_read);
+        return 0;
+    }
+
+    printf("SD_PROBE file=%s offset=%u bytes=%u byte2=%02x fnv1a32=%08x\n",
+           file_name, offset, bytes_read, buffer[2],
+           fnv1a32(buffer, MODEL_PROBE_BYTES));
+    return 1;
+}
+
 int main()
 {
     init_platform();
@@ -144,6 +179,10 @@ int main()
     if(response != FR_OK){
     	printf("FATFS Mount Failed!\n");
     	return 0;
+    }
+
+    if (!print_sd_probe("llama0.bin", first_bank / 2)) {
+        return 0;
     }
 
     printf("Loading LLama2-7B...\n");

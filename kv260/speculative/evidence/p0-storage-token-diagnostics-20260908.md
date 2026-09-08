@@ -4,8 +4,9 @@
 
 The PS-only diagnostic application completed end-to-end inference without a
 bitstream change. Exact model read lengths and raw generated token IDs pass.
-The host-to-DDR sparse-probe check is **NO-GO** because one byte differs in the
-middle probe of `llama0.bin`.
+An additional direct SD-window experiment proves that the sampled SD-to-DDR
+transfer is correct, but the SD `llama0.bin` is not identical to the available
+host copy. Model-artifact provenance therefore remains **NO-GO**.
 
 ## Artifact and method
 
@@ -55,8 +56,25 @@ board: 6d 87 ca b8
 
 The differing byte is file offset `1054736386`: host `0xBA`, board `0xCA`.
 The other 63 bytes in this probe match. This direct-memory observation rules
-out a stale CPU-cache value in the diagnostic checksum, but does not yet
-distinguish an SD-file difference from a deterministic DDR write/storage error.
+out a stale CPU-cache value in the diagnostic checksum.
+
+A follow-up PS-only experiment reopened SD `llama0.bin` before the full model
+load, sought directly to offset `1054736384`, and read 64 bytes into a separate
+small buffer. It reported:
+
+```text
+SD_PROBE file=llama0.bin offset=1054736384 bytes=64 byte2=ca fnv1a32=58122cd0
+```
+
+The follow-up ELF SHA256 is
+`e87cda79b6fc66deb9108c53c75b4a91fb715bf36044aaf943d72162d72cd23f`.
+Its 173-byte UART log is `D:\JSA paper\work\p0_sd_probe_20260908.log`, SHA256
+`8748030f4cdb7a6859cbcca83cbbc461f70dedcffc2a247ae20abac6f1ecd8cb`.
+
+The SD window and post-load DDR window are identical. The mismatch is therefore
+between the SD file and `D:\JSA paper\work\llama0.bin`, not between SD and DDR.
+The A53 was stopped immediately after this result, before the diagnostic
+application completed another full model load.
 
 ## Token evidence
 
@@ -79,24 +97,24 @@ identical to all three non-instrumented baseline trials.
 
 ## Proven and open boundaries
 
-This run proves complete FatFS transfer counts, broad host-to-DDR agreement at
-five of six representative windows, stable end-to-end inference after PS-only
-instrumentation, and a finite, varied, EOS-terminated raw token sequence. It
-also localizes the only observed storage inconsistency to one byte in the
-sampled `llama0.bin` middle window.
+This run proves complete FatFS transfer counts, sampled SD-to-DDR identity,
+broad host-to-board agreement at five of six representative windows, stable
+end-to-end inference after PS-only instrumentation, and a finite, varied,
+EOS-terminated raw token sequence. It also localizes the observed storage
+inconsistency to the SD `llama0.bin` artifact rather than the DDR transfer.
 
 The run does not prove full-file SD/DDR identity, approved model provenance,
 AXI RRESP/BRESP correctness, or timing closure for the exact bitstream.
 
 ## Next single experiment
 
-Before loading the full model, reopen SD `llama0.bin`, seek to offset
-`1054736384`, read 64 bytes into a small buffer, and report its FNV-1a and byte
-2. Compare that direct SD result with both the host file and DDR result.
+Power down cleanly, mount the SD card on the host, and record the exact sizes
+and SHA256 values of its `llama0.bin`, `llama1.bin`, and `tkz.bin`. Replace the
+SD files with approved generated artifacts, or formally record their pinned
+source if the current files are intentionally retained.
 
-- **SD reports `0xCA` / `58122cd0`:** the SD file differs from the host copy;
-  replace or formally identify the SD artifact.
-- **SD reports `0xBA` / `4114a620`:** investigate the DDR write path or memory
-  at physical address `0x83EDE0002`.
-- **Rollback:** use the validated non-instrumented ELF SHA256
-  `0b3ac1aa...2fc93` if instrumentation changes generation behavior.
+- **GO:** SD hashes match the approved generation manifest and repeat after a
+  clean copy/eject cycle.
+- **NO-GO:** any size/hash mismatch or unknown source remains.
+- **Rollback:** preserve an image or hash manifest of the currently functional
+  SD card before replacing files.
