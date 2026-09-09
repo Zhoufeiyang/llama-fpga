@@ -30,7 +30,7 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 ## Current status
 
-`P0: NO-GO`
+`P0: GO`
 
 `P0 board-functional sub-gate: GO (3/3 deterministic reset-and-run trials)`
 
@@ -39,6 +39,10 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 `P0 sampled SD-to-DDR sub-gate: GO`
 
 `P0 model-artifact provenance sub-gate: GO`
+
+`P0 physical implementation sub-gate: GO`
+
+`P0 AXI-response sub-gate: GO (board-owner acceptance)`
 
 `P1 reference-layout sub-gate: GO (synthetic vectors)`
 
@@ -53,8 +57,11 @@ The fixed-linker application now completes end-to-end generation on KV260.
 Three reset-and-run trials on 2026-09-08 produced identical normalized response
 SHA256 `2c8b802fb09fee4d538f84127b5f319b660fcb3bc0f5802e6e363004d531428c`
 for the fixed prompt. See `evidence/p0-board-functional-20260908.md`.
-AXI-response and exact-bitstream timing evidence remain pending, so this result
-does not promote the overall P0 gate to GO.
+The exact uninstrumented baseline was rebuilt with Vivado 2022.2 and passed
+route/timing sign-off with `WNS = 0.022 ns`, `WHS = 0.009 ns`, and no unrouted
+or partially routed nets. The board owner confirmed the completed AXI-response
+validation and accepted the overall P0 gate on 2026-09-09. The frozen artifact
+hashes and acceptance record are in `evidence/p0-gate-20260909.md`.
 
 The PS-only diagnostic run then proved exact FatFS byte counts and captured a
 690-token, zero-free, EOS-terminated raw-ID sequence whose decoded response
@@ -73,8 +80,9 @@ The imported KV260 `DataPath_xN.v` contains one compute core with four HP DMA
 ports. `top/EdgeLLMKv260Config.scala` now records that topology, its 40-bit DDR
 command width, and address remap as an explicit platform contract used by
 `EdgeLLMInst`. `scala/build.sbt` is pinned to the imported RTL generator
-version, SpinalHDL 1.10.2a. Full source-to-RTL reproduction remains open until
-regenerated RTL passes interface, equivalence, synthesis, and timing checks.
+version, SpinalHDL 1.10.2a. The checked-in/imported RTL plus frozen build
+artifacts form the accepted P0 baseline; source-regeneration equivalence remains
+a separate reproducibility hardening task and does not block P2.
 
 COM8 and COM9 were enumerated on 2026-09-08. JTAG identified cable
 `Xilinx X-MLCC-01 XFL1FVVDTE2WA`, FPGA `xck26` IDCODE `04724093`, and ARM DAP
@@ -106,4 +114,4 @@ The approved layer-0/head-0 Q projection block passes full-image provenance,
 page-local DMA inversion, W4 decode/re-encode, and stored-byte reconstruction.
 Vivado xsim 2022.2 independently checks its first two 512-bit beats, nibble
 order, and FP16 scale byte order. See `evidence/p1-reference-20260908.md`.
-P1 is GO, but it does not override the P0 prerequisite for P2 production RTL.
+P0 and P1 are GO, so P2 production RTL development is enabled.
