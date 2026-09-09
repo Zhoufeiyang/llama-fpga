@@ -52,6 +52,12 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P1: GO`
 
+`P2 weight-reuse scheduler sub-gate: GO`
+
+`P2 FP16 MAC/reduction sub-gate: IN PROGRESS`
+
+`P2: IN PROGRESS`
+
 The repository baseline is commit `df89b67e50383f4716e03aac35d6a25a35b0f98e`.
 The fixed-linker application now completes end-to-end generation on KV260.
 Three reset-and-run trials on 2026-09-08 produced identical normalized response
@@ -115,3 +121,24 @@ page-local DMA inversion, W4 decode/re-encode, and stored-byte reconstruction.
 Vivado xsim 2022.2 independently checks its first two 512-bit beats, nibble
 order, and FP16 scale byte order. See `evidence/p1-reference-20260908.md`.
 P0 and P1 are GO, so P2 production RTL development is enabled.
+
+## P2 implementation status
+
+The first P2 hardware sub-gate implements a synthesizable W4 operand scheduler
+for legacy GEMV and speculative GEMM. It buffers `KMAX=4` FP16 activation rows,
+accepts every packed W4 group exactly once, performs low-nibble-first zero-point
+subtraction, and replays the dequantized group and its FP16 scale through the
+same downstream operand port for `K=1..4`. Multi-row projections reuse the
+activation tile without reloading it.
+
+Vivado xsim covers both modes at `K=1`, GEMM at `K=2..4`, multi-row/tail
+boundaries, output backpressure, sideband stability, invalid GEMV descriptors,
+and K-independent accepted-weight counts. Focused OOC synthesis at the KV260
+production geometry (`LANES=128`, `MAX_BEATS_PER_ROW=32`) infers BRAM and meets
+a 300 MHz post-synthesis constraint. See
+`evidence/p2-weight-reuse-20260909.md`.
+
+P2 remains in progress until this scheduler is connected to the existing FP16
+conversion, shared MAC/reduction path, and checked against the P1 numerical
+reference. That connection is intentionally a focused module task, not a full
+KV260 rebuild.
