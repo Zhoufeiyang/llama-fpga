@@ -54,9 +54,9 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P2 weight-reuse scheduler sub-gate: GO`
 
-`P2 FP16 MAC/reduction sub-gate: IN PROGRESS`
+`P2 FP16 MAC/reduction sub-gate: GO`
 
-`P2: IN PROGRESS`
+`P2: GO`
 
 The repository baseline is commit `df89b67e50383f4716e03aac35d6a25a35b0f98e`.
 The fixed-linker application now completes end-to-end generation on KV260.
@@ -138,7 +138,16 @@ production geometry (`LANES=128`, `MAX_BEATS_PER_ROW=32`) infers BRAM and meets
 a 300 MHz post-synthesis constraint. See
 `evidence/p2-weight-reuse-20260909.md`.
 
-P2 remains in progress until this scheduler is connected to the existing FP16
-conversion, shared MAC/reduction path, and checked against the P1 numerical
-reference. That connection is intentionally a focused module task, not a full
-KV260 rebuild.
+P2-B connects the scheduler to `fp16int9d4`, the exact
+`Fp16ScaleDown(..., 2)` exponent edit, the shared `fp16mul6` lane array, the
+four-bank FP16 reduction tree, and the existing FP32 cross-bank
+scale/accumulation boundary. Four token-selected FP32 accumulators preserve
+independent speculative rows while the conversion, multiplier, and reduction
+hardware remain shared.
+
+Actual Xilinx Floating-Point IP simulation is bit-exact against P1-generated
+golden FP16 values for `K=1..4`, and every case consumes the same four packed
+weight beats. Production-geometry OOC synthesis checks the 128-lane wrapper and
+the exact expected IP instance topology; its shell timing report excludes the
+pre-synthesized floating-point black boxes and is therefore a structural, not
+full-path, timing result. See `evidence/p2b-fp16-backend-20260911.md`.
