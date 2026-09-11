@@ -70,6 +70,10 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P4-B attention-phase-controller sub-gate: GO`
 
+`P4-C production-attention source-integration sub-gate: GO`
+
+`P4-C generated-RTL sub-gate: PENDING`
+
 `P4: IN PROGRESS`
 
 The repository baseline is commit `df89b67e50383f4716e03aac35d6a25a35b0f98e`.
@@ -191,3 +195,12 @@ tentative-only startup. Actual floating-point datapath hookup and vendor-IP
 co-simulation remain before P4 can be marked GO. See
 `evidence/p4-causal-kv-tiles-20260911.md` and
 `evidence/p4b-attention-phase-controller-20260911.md`.
+
+P4-C begins the production hookup. AXI-Lite register `0x28` now propagates
+speculative enable, committed length, and query index through `DataPath_xN`
+to the real `AttnSubMod`. The existing QKMul-to-SerialSafeSoftmax-to-V-AXPY
+path is reused, while the softmax inclusive last index selects either legacy
+`status.token` or speculative `committed + q`. The full Scala project compiles
+with zero errors. Generated-RTL elaboration and vendor-IP numerical co-sim are
+still required before P4 GO. See
+`evidence/p4c-production-attention-hookup-20260911.md`.

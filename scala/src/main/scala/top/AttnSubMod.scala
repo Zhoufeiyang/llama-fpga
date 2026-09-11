@@ -65,6 +65,9 @@ class AttnSubMod(
 
   val status = new Bundle {
     val token = in UInt (log2Up(maxToken) bits)
+    val speculativeEnable = in Bool()
+    val speculativeQuery = in UInt(2 bits)
+    val speculativeCommitted = in UInt(log2Up(maxToken) bits)
   }
 
   val exp = new Bundle {
@@ -163,8 +166,13 @@ class AttnSubMod(
   softmax.io.input(0).payload := dotOutDly2
 
   softmax.io.input(1) << qk.io.output
+  // SerialSafeSoftmax consumes the inclusive last score index. Legacy decode
+  // therefore uses token, while candidate q sees committed+[0..q] and uses
+  // committed+q as the inclusive index. QKMul and the downstream softmax-to-
+  // AXPY path remain the production arithmetic datapath.
+  val speculativeLast = status.speculativeCommitted + status.speculativeQuery.resize(log2Up(maxToken))
   softmax.io.seqLen.valid.set()
-  softmax.io.seqLen.payload := status.token.asBits
+  softmax.io.seqLen.payload := Mux(status.speculativeEnable, speculativeLast, status.token).asBits
   softmax.io.output >> io.softmaxOut
 
   //  exp.to << softmax.exp.to

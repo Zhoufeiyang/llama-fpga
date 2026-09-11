@@ -184,6 +184,9 @@ class DataPath(
   }
 
   val tokenIndex = slave(Stream(util.AxiFrame(Bits(16 bits), userBit = 6)))
+  val speculativeEnable = in Bool()
+  val speculativeQuery = in UInt(2 bits)
+  val speculativeCommitted = in UInt(log2Up(maxToken) bits)
   val tokenIndexPipe = tokenIndex.toFlow.m2sPipe
 
   //  val attnQKVSplit = in UInt(4 bits) addTag (crossClockDomain)
@@ -598,6 +601,9 @@ class DataPath(
   // from io
 
   attn.io.dotOut << engine.io.scalarOut
+  attn.status.speculativeEnable := speculativeEnable
+  attn.status.speculativeQuery := speculativeQuery
+  attn.status.speculativeCommitted := speculativeCommitted
 
   //  exp.io.inputs(0) << attn.exp.to
   //  exp.io.outputs(0) >> attn.exp.from

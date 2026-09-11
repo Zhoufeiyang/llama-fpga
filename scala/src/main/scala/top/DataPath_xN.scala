@@ -198,6 +198,12 @@ class DataPath_xN(
   }
 
   for (i <- 0 until numOfCore) {
+    coreArea(i).core.speculativeEnable := cfg.io.speculativeEnable
+    coreArea(i).core.speculativeQuery := cfg.io.speculativeQuery
+    coreArea(i).core.speculativeCommitted := cfg.io.speculativeCommitted.resized
+    coreArea(i).core.speculativeEnable.addTag(crossClockDomain)
+    coreArea(i).core.speculativeQuery.addTag(crossClockDomain)
+    coreArea(i).core.speculativeCommitted.addTag(crossClockDomain)
     if (sync) {
       coreArea(i).core.tokenIndex << cfg.io.tokenIndex.m2sPipe.m2sPipe.toStream
       coreArea(i).core.tokenIndex.addTag(crossClockDomain)

@@ -14,6 +14,9 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
     val cmdSel = out UInt (2 bits)
     val presetLayer = out Bits(5 bits)
     val presetToken = out Bits(10 bits)
+    val speculativeEnable = out Bool()
+    val speculativeQuery = out UInt(2 bits)
+    val speculativeCommitted = out UInt(10 bits)
 
     //    val attnQKVSplit = out UInt (4 bits) addTag (crossClockDomain)
     //    val attnOSplit = out UInt (4 bits) addTag (crossClockDomain)
@@ -46,6 +49,9 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
   val destTokenCnt = Bits(16 bits).setAsReg().init(0)
   val cmdSel = Bits(2 bits).setAsReg().init(0)
   val softReset = Bool().setAsReg().init(False)
+  val speculativeEnable = Bool().setAsReg().init(False)
+  val speculativeQuery = UInt(2 bits).setAsReg().init(0)
+  val speculativeCommitted = UInt(10 bits).setAsReg().init(0)
 
   ctrl.write(token, 0x00, 0)
   ctrl.write(tokenVld, 0x00, 16)
@@ -53,6 +59,11 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
   ctrl.write(isPrefillLastToken, 0x00, 18)
   ctrl.write(isDecodeToken, 0x00, 19)
   ctrl.write(cmdSel, 0x24, 0)
+  // P4 runtime window. 0x28[0] selects speculative attention,
+  // [3:2] is candidate q (0..3), and [25:16] is the committed KV length.
+  ctrl.write(speculativeEnable, 0x28, 0)
+  ctrl.write(speculativeQuery, 0x28, 2)
+  ctrl.write(speculativeCommitted, 0x28, 16)
   ctrl.write(softReset, 0xC0, 0)
 
   tokenVld.clear()
@@ -137,6 +148,9 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
   io.tokenIndex.tuser := tokenUseTag
   io.tokenIndex.valid := tokenVld
   io.cmdSel := cmdSel.asUInt
+  io.speculativeEnable := speculativeEnable
+  io.speculativeQuery := speculativeQuery
+  io.speculativeCommitted := speculativeCommitted
 
 
   //  val attnQKVSplit = UInt(4 bits).setAsReg().init(0)
