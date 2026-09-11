@@ -4,7 +4,7 @@
 
 `P4-C source-integration sub-gate: GO`
 
-`P4-C generated-RTL sub-gate: NOT YET CLAIMED`
+`P4-C generated-RTL sub-gate: GO`
 
 `P4: IN PROGRESS`
 
@@ -37,8 +37,14 @@ The complete Scala project compiled 149 Scala sources and one Java source with
 zero errors under Scala 2.11.12 and SpinalHDL 1.10.2a. Two pre-existing import
 shadowing warnings remain in `GenSplitAlignTransfer.scala` and are unrelated.
 
-An attempted isolated `EdgeLLMInst` elaboration did not reach Spinal elaboration
-because the temporary WSL launcher stalled during startup and was stopped. No
-generated-RTL equivalence claim is made from that attempt. The next narrow
-gate is successful top-level elaboration followed by an interface/netlist check
-for the `0x28` register-to-softmax path.
+`EdgeLLMInst` then completed checks, transforms, and Verilog generation in a
+stage-specific directory. The 2,044,431-byte generated `DataPath_xN.v` has
+SHA256:
+
+`92d81cbc6b264907388486b83c80acdf0c843a5509d7929c0153674cd1d1435f`
+
+Structural inspection confirms that address `0x28` writes bits `[0]`, `[3:2]`,
+and `[25:16]`, that these signals reach `AttnSubMod`, that the generated
+softmax length selects `speculativeCommitted + speculativeQuery`, and that the
+same generated design connects QKMul to SerialSafeSoftmax and softmax output to
+the existing AXPY input mux.

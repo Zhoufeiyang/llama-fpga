@@ -72,7 +72,9 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P4-C production-attention source-integration sub-gate: GO`
 
-`P4-C generated-RTL sub-gate: PENDING`
+`P4-C generated-RTL sub-gate: GO`
+
+`P4-A production softmax numerical sub-gate: GO`
 
 `P4: IN PROGRESS`
 
@@ -201,6 +203,8 @@ speculative enable, committed length, and query index through `DataPath_xN`
 to the real `AttnSubMod`. The existing QKMul-to-SerialSafeSoftmax-to-V-AXPY
 path is reused, while the softmax inclusive last index selects either legacy
 `status.token` or speculative `committed + q`. The full Scala project compiles
-with zero errors. Generated-RTL elaboration and vendor-IP numerical co-sim are
-still required before P4 GO. See
+with zero errors, and top-level RTL elaboration proves the register-to-softmax
+and softmax-to-V-AXPY connections. Vendor-IP softmax simulation passes finite,
+causal-length, and normalization checks for K=1..4. QK and V vendor-IP numerical
+co-simulation are still required before P4 GO. See
 `evidence/p4c-production-attention-hookup-20260911.md`.

@@ -1,0 +1,25 @@
+{
+  "stage": "P4",
+  "source_commit": "8b7223ced614bcbcbe343ac60e3aa7bcf8a37bdc",
+  "tool": "Vivado 2022.2 and SpinalHDL 1.10.2a",
+  "artifacts": [
+    {
+      "name": "production_top_rtl",
+      "path": "kv260/speculative/build/p4c_elab/DataPath_xN.v",
+      "bytes": 2044431,
+      "sha256": "92d81cbc6b264907388486b83c80acdf0c843a5509d7929c0153674cd1d1435f"
+    },
+    {
+      "name": "production_softmax_rtl",
+      "path": "kv260/speculative/build/p4a_softmax_elab/SerialSafeSoftmaxTest.v",
+      "bytes": 16563,
+      "sha256": "dee8d2fab018e4e0f199ee9f3b631182780ac68c71343d84badd6476b4588333"
+    },
+    {
+      "name": "vendor_softmax_xsim_log",
+      "path": "kv260/speculative/build/p4a_vendor_softmax_xsim/p4a_vendor_softmax.sim/sim_1/behav/xsim/simulate.log",
+      "bytes": 1547,
+      "sha256": "c4df5e84e548901cfebbd0cd1c7e1f650867b2c1ed80f624ba75cc4fd3a6bb6f"
+    }
+  ]
+}

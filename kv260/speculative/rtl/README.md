@@ -54,3 +54,10 @@ candidate query. Its focused checks are:
 & .\kv260\speculative\rtl\run_p4b_attention_xsim.ps1
 & .\kv260\speculative\rtl\run_p4b_attention_ooc.ps1
 ```
+
+The production `SerialSafeSoftmax` vendor-IP path is checked for causal rows
+K=1..4 with:
+
+```powershell
+& .\kv260\speculative\rtl\run_p4a_vendor_softmax.ps1
+```
