@@ -58,6 +58,14 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P2: GO`
 
+`P3 transformer projection scheduler sub-gate: GO`
+
+`P3 P2-adapter sub-gate: GO`
+
+`P3: GO`
+
+`P4: NOT STARTED`
+
 The repository baseline is commit `df89b67e50383f4716e03aac35d6a25a35b0f98e`.
 The fixed-linker application now completes end-to-end generation on KV260.
 Three reset-and-run trials on 2026-09-08 produced identical normalized response
@@ -151,3 +159,13 @@ weight beats. Production-geometry OOC synthesis checks the 128-lane wrapper and
 the exact expected IP instance topology; its shell timing report excludes the
 pre-synthesized floating-point black boxes and is therefore a structural, not
 full-path, timing result. See `evidence/p2b-fp16-backend-20260911.md`.
+
+## P3 implementation status
+
+P3 adds a transformer-level controller above P2. Each layer issues Q/K/V,
+waits for attention, issues O and G/U, waits for the MLP activation, and issues
+D; the final layer is followed by LM head. Runtime K travels with every
+descriptor while the number of target-weight projections remains independent
+of K. A P3-to-P2 adapter locks tensor/layer identity from configuration accept
+through P2 completion. See
+`evidence/p3-transformer-projection-scheduler-20260911.md`.

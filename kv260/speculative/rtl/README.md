@@ -30,3 +30,12 @@ Run the focused tests from the repository root:
 The first command is self-checking and fails unless the final GO marker is
 present. The second command synthesizes only this module for the KV260 part; it
 does not rebuild the full block design or create a board bitstream.
+
+P3 adds `p3_batched_projection_controller.sv`, which sequences the Llama2-7B
+Q/K/V/O/G/U/D and LM-head projections and translates every descriptor to the
+P2 configuration interface:
+
+```powershell
+& .\kv260\speculative\rtl\run_p3_scheduler_xsim.ps1
+& .\kv260\speculative\rtl\run_p3_scheduler_ooc.ps1
+```
