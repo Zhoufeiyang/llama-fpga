@@ -39,3 +39,10 @@ P2 configuration interface:
 & .\kv260\speculative\rtl\run_p3_scheduler_xsim.ps1
 & .\kv260\speculative\rtl\run_p3_scheduler_ooc.ps1
 ```
+
+P4-A causal KV tile control is checked with:
+
+```powershell
+& .\kv260\speculative\rtl\run_p4_tile_xsim.ps1
+& .\kv260\speculative\rtl\run_p4_tile_ooc.ps1
+```

@@ -64,7 +64,9 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P3: GO`
 
-`P4: NOT STARTED`
+`P4 causal KV tile scheduler sub-gate: GO`
+
+`P4: IN PROGRESS`
 
 The repository baseline is commit `df89b67e50383f4716e03aac35d6a25a35b0f98e`.
 The fixed-linker application now completes end-to-end generation on KV260.
@@ -169,3 +171,12 @@ descriptor while the number of target-weight projections remains independent
 of K. A P3-to-P2 adapter locks tensor/layer identity from configuration accept
 through P2 completion. See
 `evidence/p3-transformer-projection-scheduler-20260911.md`.
+
+## P4 implementation status
+
+P4-A implements causal tiled access control for committed DDR KV and tentative
+on-chip KV. Each query streams only the committed prefix in 64-token tiles,
+then exposes tentative candidates `[0..q]`; ping/pong buffer identity and
+response metadata are checked before advancing. Arithmetic attention and its
+numerical reference remain the next P4 sub-gate, so P4 is still in progress.
+See `evidence/p4-causal-kv-tiles-20260911.md`.
