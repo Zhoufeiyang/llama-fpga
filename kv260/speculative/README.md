@@ -66,6 +66,10 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P4 causal KV tile scheduler sub-gate: GO`
 
+`P4-B numerical-reference sub-gate: GO`
+
+`P4-B attention-phase-controller sub-gate: GO`
+
 `P4: IN PROGRESS`
 
 The repository baseline is commit `df89b67e50383f4716e03aac35d6a25a35b0f98e`.
@@ -177,6 +181,13 @@ through P2 completion. See
 P4-A implements causal tiled access control for committed DDR KV and tentative
 on-chip KV. Each query streams only the committed prefix in 64-token tiles,
 then exposes tentative candidates `[0..q]`; ping/pong buffer identity and
-response metadata are checked before advancing. Arithmetic attention and its
-numerical reference remain the next P4 sub-gate, so P4 is still in progress.
-See `evidence/p4-causal-kv-tiles-20260911.md`.
+response metadata are checked before advancing.
+
+P4-B adds a batch attention phase controller that sequences the existing QK,
+stable-softmax, and V-accumulation interfaces per query while preserving the
+same causal tiled range in both sweeps. Its NumPy oracle proves tiled/dense
+equivalence for K=1..4, future-candidate isolation, INT8 dequantization, and
+tentative-only startup. Actual floating-point datapath hookup and vendor-IP
+co-simulation remain before P4 can be marked GO. See
+`evidence/p4-causal-kv-tiles-20260911.md` and
+`evidence/p4b-attention-phase-controller-20260911.md`.

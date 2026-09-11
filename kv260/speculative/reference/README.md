@@ -28,6 +28,15 @@ DDR offset is rejected early.
 Synthetic-vector success is only the P1 layout sub-gate. P1 is complete after
 approved real packed blocks and RTL simulation outputs have also been checked.
 
+`attention_reference.py` is the P4 causal-attention oracle. It compares dense
+attention with committed/tentative tiled traversal for K=1..4, applies INT8
+scale/zero dequantization, and uses stable max-subtracted softmax with a `-16`
+clip. Run all P1 and P4 numerical tests with:
+
+```powershell
+python -m unittest discover -s kv260/speculative/reference -p 'test_*.py' -v
+```
+
 Verify the approved `llama0.bin` artifact and its first layer Q-head block:
 
 ```powershell

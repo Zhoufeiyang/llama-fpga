@@ -46,3 +46,11 @@ P4-A causal KV tile control is checked with:
 & .\kv260\speculative\rtl\run_p4_tile_xsim.ps1
 & .\kv260\speculative\rtl\run_p4_tile_ooc.ps1
 ```
+
+P4-B sequences QK tiles, stable softmax, and V accumulation for every causal
+candidate query. Its focused checks are:
+
+```powershell
+& .\kv260\speculative\rtl\run_p4b_attention_xsim.ps1
+& .\kv260\speculative\rtl\run_p4b_attention_ooc.ps1
+```
