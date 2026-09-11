@@ -44,10 +44,15 @@ tag, P2 configuration forwarding, and completion identity retention.
 ## OOC synthesis acceptance
 
 The combined scheduler and P2 adapter synthesized with zero errors and zero
-critical warnings. At 3.333 ns it reports WNS `+1.647 ns`, 70 LUTs, 69
+critical warnings. After the sticky-error review fix, at 3.333 ns it reports
+WNS `+1.630 ns`, 68 LUTs, 70
 registers, zero BRAM, and zero DSP. DCP SHA256:
 
-`585b73cf3983ab49684859dce4d4e7074145ce67d24b7ac90f5192203926fced`
+`6337d8af3b6088096946cbbfdc774b298a651d2cb5fca797d01e53caa5698cf4`
+
+The adapter now latches a one-cycle P2 error until reset, retires the in-flight
+identity, and refuses a new descriptor while faulted. Xsim explicitly checks
+that the error remains visible after the source pulse has ended.
 
 This proves the standalone controller only; P7 remains responsible for
 full-design implementation and board timing. P4 next consumes the attention

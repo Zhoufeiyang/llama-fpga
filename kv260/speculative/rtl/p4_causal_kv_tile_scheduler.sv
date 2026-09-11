@@ -54,6 +54,8 @@ module p4_causal_kv_tile_scheduler #(
       state<=IDLE; return_state<=IDLE; k_reg<=0; query_reg<=0; committed_reg<=0;
       committed_offset<=0; inflight_source<=0; inflight_buffer<=0; inflight_query<=0;
       inflight_start<=0; error_code<=0; ddr_tile_requests<=0; tentative_requests<=0;
+    end else if(response_done && state!=WAIT_RESPONSE) begin
+      state<=FAULT; error_code<=ERR_UNEXPECTED;
     end else case(state)
       IDLE: if(start_valid&&start_ready) begin
         if(start_k<1||start_k>MAX_K) begin state<=FAULT; error_code<=ERR_K; end

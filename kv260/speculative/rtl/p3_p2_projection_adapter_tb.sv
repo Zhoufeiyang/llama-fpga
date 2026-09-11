@@ -20,6 +20,11 @@ module p3_p2_projection_adapter_tb;
     @(negedge clk); p2_done=1; @(posedge clk);
     if(!completion_valid || completion_tag!=24 || completion_layer!=7) $fatal(1,"completion identity mismatch");
     @(negedge clk); p2_done=0; @(posedge clk); if(busy) $fatal(1,"adapter did not retire");
+    reset=1;repeat(2)@(posedge clk);reset=0;
+    @(negedge clk);descriptor_valid=1;p2_cfg_ready=1;descriptor_tag=5;descriptor_layer=1;
+    @(posedge clk);@(negedge clk);descriptor_valid=0;p2_cfg_ready=0;p2_error=1;
+    @(posedge clk);@(negedge clk);p2_error=0;repeat(2)@(posedge clk);
+    if(!error||descriptor_ready) $fatal(1,"P2 error was not retained");
     $display("P3_P2_PROJECTION_ADAPTER_GO"); $finish;
   end
 endmodule

@@ -16,21 +16,22 @@ module p3_p2_projection_adapter (
   output logic [5:0] completion_layer,
   output logic busy, output logic error
 );
-  logic inflight; logic [5:0] tag_reg, layer_reg;
-  assign descriptor_ready=!inflight && p2_cfg_ready;
-  assign p2_cfg_valid=descriptor_valid && !inflight;
+  logic inflight,error_reg; logic [5:0] tag_reg, layer_reg;
+  assign descriptor_ready=!inflight && !error_reg && p2_cfg_ready;
+  assign p2_cfg_valid=descriptor_valid && !inflight && !error_reg;
   assign p2_cfg_mode=descriptor_mode; assign p2_cfg_k=descriptor_k;
   assign p2_cfg_rows=descriptor_rows; assign p2_cfg_beats_per_row=descriptor_beats_per_row;
   assign completion_valid=p2_done && inflight;
   assign completion_tag=tag_reg; assign completion_layer=layer_reg;
-  assign busy=inflight; assign error=p2_error && inflight;
+  assign busy=inflight; assign error=error_reg;
   always_ff @(posedge clk) begin
-    if(reset) begin inflight<=0; tag_reg<=0; layer_reg<=0; end
+    if(reset) begin inflight<=0; error_reg<=0; tag_reg<=0; layer_reg<=0; end
     else begin
       if(descriptor_valid && descriptor_ready) begin
         inflight<=1; tag_reg<=descriptor_tag; layer_reg<=descriptor_layer;
       end
       if(p2_done && inflight) inflight<=0;
+      if(p2_error && inflight) begin inflight<=0; error_reg<=1; end
     end
   end
 endmodule

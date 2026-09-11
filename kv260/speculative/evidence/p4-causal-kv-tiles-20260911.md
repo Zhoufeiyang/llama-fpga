@@ -20,6 +20,8 @@ Every request locks source, query, and start-token identity until its response.
 Mismatched responses fault rather than advancing. Consecutive requests alternate
 ping/pong BRAM/URAM tile-buffer selection. A descriptor is rejected when
 `committed_tokens + K > MAX_CONTEXT`.
+An unexpected response while no tile is in flight also enters the sticky fault
+state; it can no longer be silently discarded.
 
 ## Simulation
 
@@ -38,10 +40,10 @@ query. The committed=0 case proves tentative-only startup.
 ## OOC synthesis
 
 Vivado 2022.2 synthesis completed with zero errors and zero critical warnings.
-At 3.333 ns, WNS is `+0.239 ns`; utilization is 167 LUTs and 131 registers,
+At 3.333 ns, WNS is `+0.205 ns`; utilization is 172 LUTs and 131 registers,
 with no BRAM or DSP in the control-only module. DCP SHA256:
 
-`f8f6ae31c96fd957e46fda337ddc444792939a3f18c926b782bd61b98c8ee5bc`
+`ebaf76f07eca8c99c348205ca57d8b93e68de1ef69526bd698475f37a7abbdcf`
 
 This does not yet prove attention arithmetic. The remaining P4 work is the
 QK/softmax/V datapath and numerical equivalence under the emitted causal masks.
