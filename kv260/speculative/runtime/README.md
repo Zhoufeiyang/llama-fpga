@@ -6,9 +6,8 @@ and token-output callbacks. The state sequence is:
 
 `DRAFT -> TARGET_VERIFY -> READ_TARGET_RESULTS -> ACCEPT_OR_REJECT -> COMMIT_POINTER -> EMIT_TOKENS -> ACK_RESULTS`.
 
-The initial draft callback is deliberately model-independent. The included
-test uses a deterministic next-ID stub; a later board adapter can replace it
-with an n-gram, lookup, or neural draft without changing the transaction FSM.
+The draft callback is model-independent. The tests exercise deterministic,
+n-gram, and INT8 tiny-MLP callbacks without changing the transaction FSM.
 
 Run the host behavioral suite and Vitis ARM compile check from the repository
 root:
@@ -45,3 +44,9 @@ buffers into the two KV260 DDR ranges, checks every interval for overlap, and
 records the remaining tail. It intentionally reserves activation, Gate/Up,
 tentative KV, metadata, and a 4 MiB runtime guard in addition to the n-gram
 table.
+
+`tiny_draft.c` adds a runtime-compatible no-heap INT8 tiny-MLP callback and a
+strict versioned/CRC-checked model loader. `run_p7f_tiny_draft.ps1` regenerates
+the deterministic 512,064-byte test model, compares every generated C logit
+against NumPy, and compiles an AArch64 freestanding entry object. Its weights
+are synthetic validation vectors, not a trained language model.

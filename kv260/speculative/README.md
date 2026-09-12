@@ -128,6 +128,8 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P7-E target-only fallback sub-gate: GO`
 
+`P7-F INT8 draft format/numerical/ARM sub-gate: GO`
+
 `P7 real quantized draft sub-gate: IN PROGRESS`
 
 The repository baseline is commit `df89b67e50383f4716e03aac35d6a25a35b0f98e`.
@@ -358,7 +360,7 @@ the target's 16-bit tokenizer-ID space. A 4096-entry instance uses 49,152 bytes
 and passes a 100-token continuous-generation test. A static interval audit
 places the 4,024,909,824-byte target, conservative K=4 buffers, tentative KV,
 metadata, and runtime guard without overlap. The linker-aware budget reserves the complete A53
-window at `0x73000000..0x7ff00000`; it leaves 8,187,904 bytes before that
+window at `0x73000000..0x7ff00000`; including the P7-F INT8 model, it leaves 7,675,840 bytes before that
 window and 38,010,880 bytes in high DDR. A concrete neural draft artifact and its measured acceptance
 rate remain open. See `evidence/p7d-ngram-memory-budget-20260912.md`.
 
@@ -372,3 +374,15 @@ selected Llama-compatible draft tokenizer has identical token IDs, normalized
 pieces, scores, and special-token IDs to `au250/tkz.bin`. The live-board and
 real neural-draft gates remain open. See
 `evidence/p7e-runtime-tokenizer-20260912.md`.
+
+P7-F implements a bounded INT8 tiny-MLP draft primitive over the shared
+32,000-token ID space. Its 512,064-byte binary has a versioned header,
+dimension/offset/length checks, positive finite scales, and payload CRC32.
+The no-heap C greedy result is exactly equal to the NumPy reference for all
+32,000 logits in the acceptance vectors, and the module compiles as an
+AArch64 freestanding object. The runtime-compatible callback consumes the
+latest prefix token. This is a numerical/format implementation built from
+deterministic synthetic weights; it is not represented as a trained Llama
+draft and no acceptance-rate claim is made. See
+`runtime/P7F_TINY_DRAFT_FORMAT.md` and
+`evidence/p7f-tiny-int8-draft-20260912.md`.

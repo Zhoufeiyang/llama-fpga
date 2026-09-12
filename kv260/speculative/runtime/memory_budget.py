@@ -32,6 +32,7 @@ def build_budget(model0_bytes: int, model1_bytes: int) -> dict:
     cursor = align(REGION0_START + model1_bytes, 4096)
     allocations = [
         ("draft_ngram_4096", 4096 * 12),
+        ("tiny_draft_int8", 512064),
         ("activation_k4_fp16", 4 * 4096 * 2),
         ("gate_up_k4_fp16", 2 * 4 * 11008 * 2),
         ("tentative_kv_k4", 1024 * 1024),
