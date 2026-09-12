@@ -90,6 +90,8 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P5-B production AXI-Lite control sub-gate: GO`
 
+`P5-C production KV data-address sub-gate: GO`
+
 The repository baseline is commit `df89b67e50383f4716e03aac35d6a25a35b0f98e`.
 The fixed-linker application now completes end-to-end generation on KV260.
 Three reset-and-run trials on 2026-09-08 produced identical normalized response
@@ -248,3 +250,12 @@ test, and the committed register already drives the P4 attention visibility
 path. The remaining P5 gate is explicit integration with production KV write
 addresses and metadata commands. See
 `evidence/p5b-production-control-20260912.md`.
+
+P5-C connects `committed + q` to the real KV read and write command generator.
+The selected write slot is captured with the token launch and remains stable
+for all layer/head commands. Speculative candidates no longer advance the
+legacy physical write counter, and target-only fallback resumes at the accepted
+pointer. Focused xsim covers legacy and q=0..3 selection, while complete-top
+elaboration proves the selectors and FIFO are present in production RTL. P5
+remains open only for partial scale/zero metadata RMW integration. See
+`evidence/p5c-production-kv-address-20260912.md`.

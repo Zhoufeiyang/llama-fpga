@@ -597,6 +597,9 @@ class DataPath(
   cmdGen.local.kvBus.data := szPacker.io.kvBus.fragment
   cmdGen.local.kvBus.dest.clearAll()
   cmdGen.status.enPredictor := stateGen.status.enPredictor
+  cmdGen.status.speculativeEnable := speculativeEnable
+  cmdGen.status.speculativeQuery := speculativeQuery
+  cmdGen.status.speculativeCommitted := speculativeCommitted
 
   // from io
 

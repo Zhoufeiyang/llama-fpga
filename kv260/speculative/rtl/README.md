@@ -82,3 +82,10 @@ pointer-control registers with:
 ```powershell
 & .\kv260\speculative\rtl\run_p5b_axilite_xsim.ps1
 ```
+
+After elaborating `cfgGen.SpeculativeKvPositionP5CTest`, validate the production
+KV read/write position selector with:
+
+```powershell
+& .\kv260\speculative\rtl\run_p5c_position_xsim.ps1
+```

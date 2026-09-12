@@ -55,12 +55,23 @@ class GenMemCmdLenAlign(
 
   val status = new Bundle {
     val enPredictor = in Bool()
+    val speculativeEnable = in Bool()
+    val speculativeQuery = in UInt(2 bits)
+    val speculativeCommitted = in UInt(log2Up(maxToken) bits)
     val cmdSel = if (numOfCore == 1 && dmaSplit == 1 || numOfCore == 4) in UInt (2 bits) else null
   }
 
   import LLaMA2_7B._
 
   val token = UInt(log2Up(maxToken) bits).setAsReg().init(0)
+  // During verification, all KV reads use the frozen committed prefix plus
+  // candidate q. The legacy counter remains untouched for target-only mode.
+  val kvReadPosition = new SpeculativeKvPosition(maxToken)
+  kvReadPosition.io.legacyPosition := token
+  kvReadPosition.io.speculativeEnable := status.speculativeEnable
+  kvReadPosition.io.committedPosition := status.speculativeCommitted
+  kvReadPosition.io.candidatePosition := status.speculativeQuery
+  val kvReadToken = kvReadPosition.io.selectedPosition
   val tokenHigh = token.dropLow(log2Up(busWidth / 32)).asUInt
   val tokenLow = token.takeLow(log2Up(busWidth / 32))
   val firstToken = token === 0
@@ -286,13 +297,13 @@ class GenMemCmdLenAlign(
     val attnVCmdVec = util.GenSplitAlignTransfer(mmap.attnV_addr, mmap.attnV_len, attnHeadBase, pageSize)
     val attnKCacheCmd = GenAxiDataMoverCmd.retStream(
       U(mmap.attnKCache_addr),
-      GenMemCmdLen.kvCache(dim / head, token).asUInt,
+      GenMemCmdLen.kvCache(dim / head, kvReadToken).asUInt,
       attnHeadBase,
       inc = True, eof = True, tag = B"0001"
     )
     val attnVCacheCmd = GenAxiDataMoverCmd.retStream(
       U(mmap.attnVCache_addr),
-      GenMemCmdLen.kvCache(dim / head, token).asUInt,
+      GenMemCmdLen.kvCache(dim / head, kvReadToken).asUInt,
       attnHeadBase,
       inc = True, eof = True, tag = B"0001"
     )
@@ -346,25 +357,25 @@ class GenMemCmdLenAlign(
     val attnVCmdVec = util.GenSplitAlignTransfer(mmap.attnV_addr, mmap.attnV_len, attnHeadBase, pageSize)
     val attnKszCmd = GenAxiDataMoverCmd.retStream(
       U(mmap.attnKScaleZero_addr),
-      GenMemCmdLen.kvScaleZero(token, busWidth).asUInt,
+      GenMemCmdLen.kvScaleZero(kvReadToken, busWidth).asUInt,
       attnHeadBase,
       inc = True, eof = True, tag = B"0010"
     )
     val attnVszCmd = GenAxiDataMoverCmd.retStream(
       U(mmap.attnVScaleZero_addr),
-      GenMemCmdLen.kvScaleZero(token, busWidth).asUInt,
+      GenMemCmdLen.kvScaleZero(kvReadToken, busWidth).asUInt,
       attnHeadBase,
       inc = True, eof = True, tag = B"0010"
     )
     val attnKCacheCmd = GenAxiDataMoverCmd.retStream(
       U(mmap.attnKCache_addr),
-      GenMemCmdLen.kvCache(dim / head, token).asUInt,
+      GenMemCmdLen.kvCache(dim / head, kvReadToken).asUInt,
       attnHeadBase,
       inc = True, eof = True, tag = B"0001"
     )
     val attnVCacheCmd = GenAxiDataMoverCmd.retStream(
       U(mmap.attnVCache_addr),
-      GenMemCmdLen.kvCache(dim / head, token).asUInt,
+      GenMemCmdLen.kvCache(dim / head, kvReadToken).asUInt,
       attnHeadBase,
       inc = True, eof = True, tag = B"0001"
     )
@@ -716,8 +727,17 @@ class GenMemCmdLenAlign(
 
   val s2mm = new Area {
 
-    val tokenEnFifo = new StreamFifo(NoData(), 64, forFMax = true)
+    val s2mmTokenCnt = UInt(log2Up(maxToken) bits).setAsReg().init(0)
+    val kvWritePosition = new SpeculativeKvPosition(maxToken)
+    kvWritePosition.io.legacyPosition := s2mmTokenCnt
+    kvWritePosition.io.speculativeEnable := status.speculativeEnable
+    kvWritePosition.io.committedPosition := status.speculativeCommitted
+    kvWritePosition.io.candidatePosition := status.speculativeQuery
+    // Capture the physical KV slot with the launch. This keeps the address
+    // stable even if PS changes q immediately after enqueueing the next job.
+    val tokenEnFifo = new StreamFifo(UInt(log2Up(maxToken) bits), 64, forFMax = true)
     tokenEnFifo.io.push.valid := io.tokenIndex.fire
+    tokenEnFifo.io.push.payload := kvWritePosition.io.selectedPosition
     tokenEnFifo.io.pop.ready.clear()
 
     val mallocPerHead = U(mmap.attnQKV_len)
@@ -747,7 +767,6 @@ class GenMemCmdLenAlign(
     val layerCnt = UInt(log2Up(layer) bits).setAsReg().init(0)
     val layerCntAbout2Ovf = layerCnt === layer - 2
     val layerCntOvf = Bool().setAsReg().init(False)
-    val s2mmTokenCnt = UInt(log2Up(maxToken) bits).setAsReg().init(0)
     layerBase := layerBaseNext
     layerBaseNext := layerBase
     when(enIncLayer) {
@@ -763,6 +782,13 @@ class GenMemCmdLenAlign(
       }
     }
 
+    // Speculative candidate writes must not advance the legacy physical
+    // counter. Continuously mirroring committed state also makes fallback to
+    // target-only mode resume at the accepted pointer.
+    when(status.speculativeEnable) {
+      s2mmTokenCnt := status.speculativeCommitted
+    }
+
     //    layerCnt.addAttribute("mark_debug", "true")
     //    s2mmTokenCnt.addAttribute("mark_debug", "true")
 
@@ -770,20 +796,21 @@ class GenMemCmdLenAlign(
     val attnHeadBaseNext = layerBaseNext + headBaseNext
     attnHeadBase := attnHeadBaseNext
 
-    val s2mmTokenCntLow = s2mmTokenCnt.takeLow(log2Up(busWidth / 32))
-    val s2mmTokenHigh = s2mmTokenCnt.dropLow(log2Up(busWidth / 32)).asUInt
+    val s2mmWriteToken = tokenEnFifo.io.pop.payload
+    val s2mmTokenCntLow = s2mmWriteToken.takeLow(log2Up(busWidth / 32))
+    val s2mmTokenHigh = s2mmWriteToken.dropLow(log2Up(busWidth / 32)).asUInt
     val s2mSzToMem = s2mmTokenCntLow.andR
 
     val kvSzLen = busWidth / 8
     val kvLen = dim / head
     val kCacheCmd = GenAxiDataMoverCmd(
-      (s2mmTokenCnt ## B(0, log2Up(kvLen / dmaSplit) bits)).asUInt,
+      (s2mmWriteToken ## B(0, log2Up(kvLen / dmaSplit) bits)).asUInt,
       U(kvLen),
       attnHeadBase + mmap.attnKCache_addr,
       inc = True, eof = True, tag = B"0001"
     )
     val vCacheCmd = GenAxiDataMoverCmd(
-      (s2mmTokenCnt ## B(0, log2Up(kvLen / dmaSplit) bits)).asUInt,
+      (s2mmWriteToken ## B(0, log2Up(kvLen / dmaSplit) bits)).asUInt,
       U(kvLen),
       attnHeadBase + mmap.attnVCache_addr,
       inc = True, eof = True, tag = B"0001"
