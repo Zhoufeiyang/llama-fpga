@@ -247,6 +247,50 @@ static int check_pl_fault(void)
            fake.regs[SPEC_REG_ROLLBACK / 4u] == 1u ? 0 : 1;
 }
 
+static int check_target_fallback(int inject_fault)
+{
+    fake_platform_t fake;
+    spec_runtime_t runtime;
+    spec_runtime_config_t config;
+    memset(&fake, 0, sizeof(fake));
+    memset(&config, 0, sizeof(config));
+    config.read32 = fake_read;
+    config.write32 = fake_write;
+    config.mmio_context = &fake;
+    config.draft = deterministic_draft;
+    config.launch_verify = fake_launch_verify;
+    config.verify_context = &fake;
+    config.emit = capture_emit;
+    config.emit_context = &fake;
+    config.timeout_polls = 2u;
+    config.enable_target_fallback = 1u;
+    if (spec_runtime_init(&runtime, &config) != 0 ||
+        spec_runtime_begin(&runtime, 20u, 4u, 77u, 2u) != 0) {
+        return 1;
+    }
+    fake.stall_once = 1u;
+    (void)spec_runtime_step(&runtime);
+    (void)spec_runtime_step(&runtime);
+    (void)spec_runtime_step(&runtime);
+    if (inject_fault != 0) {
+        fake.regs[SPEC_REG_STATUS / 4u] = SPEC_STATUS_FAULT;
+    }
+    if (run_until_terminal(&runtime, 32u) != 0 ||
+        runtime.state != SPEC_STATE_COMPLETE ||
+        fake.emitted_count != 1u || fake.emitted[0] != 77u ||
+        runtime.committed_length != 20u ||
+        runtime.metrics.transactions_failed != 1u ||
+        runtime.metrics.transactions_completed != 1u ||
+        runtime.metrics.fallback_invocations != 1u ||
+        runtime.metrics.fallback_tokens != 1u ||
+        runtime.metrics.rollback_transactions != 1u) {
+        return 1;
+    }
+    return inject_fault != 0 ?
+        (runtime.error == SPEC_ERROR_PL_FAULT ? 0 : 1) :
+        (runtime.error == SPEC_ERROR_TIMEOUT ? 0 : 1);
+}
+
 int main(void)
 {
     uint8_t k;
@@ -261,11 +305,13 @@ int main(void)
     }
     errors += check_timeout();
     errors += check_pl_fault();
+    errors += check_target_fallback(0);
+    errors += check_target_fallback(1);
     errors += check_invalid_descriptors();
     if (errors != 0) {
         fprintf(stderr, "P7-A runtime failed with %d errors\n", errors);
         return 1;
     }
-    puts("P7A_PS_RUNTIME_GO K1_TO_K4=1 BACKPRESSURE=1 TIMEOUT_ROLLBACK=1 PL_FAULT_ROLLBACK=1 METRICS=1");
+    puts("P7A_PS_RUNTIME_GO K1_TO_K4=1 BACKPRESSURE=1 TIMEOUT_ROLLBACK=1 PL_FAULT_ROLLBACK=1 TARGET_FALLBACK=1 METRICS=1");
     return 0;
 }

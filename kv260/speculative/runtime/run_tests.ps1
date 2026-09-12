@@ -29,6 +29,18 @@ $draftGo=$draftText -split "`r?`n" | Where-Object {$_ -match '^P7D_'}
 $draftGo | Write-Output
 $draftGo | Set-Content -LiteralPath (Join-Path $BuildDir 'p7d_draft_test.log') -Encoding ascii
 
+$sessionTest=(wsl.exe wslpath -a (Join-Path $PSScriptRoot 'test_spec_decode_100.c')).Trim()
+$sessionBinary=(wsl.exe wslpath -a (Join-Path $BuildDir 'test_spec_decode_100')).Trim()
+wsl.exe gcc -std=c99 -Wall -Wextra -Werror -pedantic -I $include $source $draftSource $sessionTest -o $sessionBinary
+if($LASTEXITCODE-ne 0){throw 'P7-E end-to-end host compilation failed'}
+$sessionOutput=wsl.exe $sessionBinary 2>&1
+if($LASTEXITCODE-ne 0){throw 'P7-E end-to-end runtime test failed'}
+$sessionText=(($sessionOutput -join "`n") -replace "`0",'')
+if($sessionText-notmatch 'P7E_RUNTIME_100_GO'){throw 'P7-E GO marker missing'}
+$sessionGo=$sessionText -split "`r?`n" | Where-Object {$_ -match '^P7E_'}
+$sessionGo | Write-Output
+$sessionGo | Set-Content -LiteralPath (Join-Path $BuildDir 'p7e_runtime_100.log') -Encoding ascii
+
 $armcc='F:\Xilinx2022\Vitis\2022.2\gnu\aarch32\nt\gcc-arm-none-eabi\bin\arm-none-eabi-gcc.exe'
 if(Test-Path -LiteralPath $armcc){
   function Get-ShortPath([string]$Path){

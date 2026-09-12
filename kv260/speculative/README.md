@@ -122,6 +122,12 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P7-D static DDR-budget sub-gate: GO`
 
+`P7-E tokenizer-compatibility sub-gate: GO`
+
+`P7-E 100-token host runtime sub-gate: GO`
+
+`P7-E target-only fallback sub-gate: GO`
+
 `P7 real quantized draft sub-gate: IN PROGRESS`
 
 The repository baseline is commit `df89b67e50383f4716e03aac35d6a25a35b0f98e`.
@@ -354,3 +360,14 @@ places the 4,024,909,824-byte target, conservative K=4 buffers, tentative KV,
 metadata, and runtime guard without overlap, leaving 225,243,136 bytes in the
 low DDR tail. A concrete neural draft artifact and its measured acceptance
 rate remain open. See `evidence/p7d-ngram-memory-budget-20260912.md`.
+
+P7-E binds the n-gram callback into the A53 build, adds target-only recovery
+after verification timeout or PL fault, and verifies the complete draft,
+target-result, acceptance, rollback, commit, and emission FSM for 100
+continuous tokens at K=1..4. Every emitted stream is identical to a
+target-only greedy oracle; K=2 additionally injects a timeout and resumes via
+the known target `g[0]`. A full 32,000-entry comparison also proves that the
+selected Llama-compatible draft tokenizer has identical token IDs, normalized
+pieces, scores, and special-token IDs to `au250/tkz.bin`. The live-board and
+real neural-draft gates remain open. See
+`evidence/p7e-runtime-tokenizer-20260912.md`.

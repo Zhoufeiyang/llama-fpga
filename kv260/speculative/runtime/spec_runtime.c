@@ -7,9 +7,18 @@ static void fail_transaction(spec_runtime_t *runtime, spec_error_t error)
     runtime->config.write32(runtime->config.mmio_context, SPEC_REG_ROLLBACK, 1u);
     runtime->config.write32(runtime->config.mmio_context, SPEC_REG_RESULT_ACK, 1u);
     runtime->error = error;
-    runtime->state = SPEC_STATE_ERROR;
     ++runtime->metrics.transactions_failed;
     ++runtime->metrics.rollback_transactions;
+    if (runtime->config.enable_target_fallback != 0u) {
+        runtime->emit_tokens[0] = runtime->initial_target;
+        runtime->emit_count = 1u;
+        runtime->emit_index = 0u;
+        runtime->accepted_count = 0u;
+        runtime->state = SPEC_STATE_EMIT_FALLBACK;
+        ++runtime->metrics.fallback_invocations;
+    } else {
+        runtime->state = SPEC_STATE_ERROR;
+    }
 }
 
 int spec_runtime_init(spec_runtime_t *runtime,
@@ -77,10 +86,9 @@ spec_step_result_t spec_runtime_step(spec_runtime_t *runtime)
         if (runtime->config.draft(runtime->config.draft_context, prefix,
                                   (size_t)runtime->draft_count + 1u,
                                   &next_token) != 0) {
-            runtime->error = SPEC_ERROR_DRAFT;
-            runtime->state = SPEC_STATE_ERROR;
-            ++runtime->metrics.transactions_failed;
-            return SPEC_STEP_ERROR;
+            fail_transaction(runtime, SPEC_ERROR_DRAFT);
+            return runtime->state == SPEC_STATE_ERROR ? SPEC_STEP_ERROR :
+                                                        SPEC_STEP_PROGRESS;
         }
         runtime->candidates[runtime->draft_count++] = next_token;
         ++runtime->metrics.draft_tokens;
@@ -207,6 +215,26 @@ spec_step_result_t spec_runtime_step(spec_runtime_t *runtime)
         ++runtime->metrics.transactions_completed;
         return SPEC_STEP_COMPLETE;
 
+    case SPEC_STATE_EMIT_FALLBACK: {
+        int emit_result = runtime->config.emit(runtime->config.emit_context,
+                                               runtime->initial_target);
+        if (emit_result < 0) {
+            runtime->error = SPEC_ERROR_EMIT;
+            runtime->state = SPEC_STATE_ERROR;
+            return SPEC_STEP_ERROR;
+        }
+        if (emit_result == 0) {
+            ++runtime->metrics.output_backpressure_stalls;
+            return SPEC_STEP_WAITING;
+        }
+        runtime->emit_index = 1u;
+        ++runtime->metrics.emitted_tokens;
+        ++runtime->metrics.fallback_tokens;
+        runtime->state = SPEC_STATE_COMPLETE;
+        ++runtime->metrics.transactions_completed;
+        return SPEC_STEP_COMPLETE;
+    }
+
     case SPEC_STATE_COMPLETE:
         return SPEC_STEP_COMPLETE;
     case SPEC_STATE_IDLE:
@@ -242,7 +270,7 @@ const char *spec_runtime_state_name(spec_runtime_state_t state)
     static const char *const names[] = {
         "IDLE", "DRAFT", "TARGET_VERIFY", "READ_TARGET_RESULTS",
         "ACCEPT_OR_REJECT", "COMMIT_POINTER", "EMIT_TOKENS",
-        "ACK_RESULTS", "COMPLETE", "ERROR"
+        "ACK_RESULTS", "EMIT_FALLBACK", "COMPLETE", "ERROR"
     };
     if ((unsigned)state >= sizeof(names) / sizeof(names[0])) {
         return "UNKNOWN";

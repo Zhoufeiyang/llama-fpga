@@ -2,6 +2,8 @@
 
 #include "xil_io.h"
 
+#include <string.h>
+
 #define LEGACY_RESULT_OFFSET 0x004u
 #define LEGACY_RESULT_CLEAR_OFFSET 0x080u
 #define SPEC_ATTENTION_OFFSET 0x028u
@@ -60,9 +62,10 @@ int spec_xilinx_runtime_init(spec_runtime_t *runtime,
 {
     spec_runtime_config_t config;
     if (runtime == NULL || platform == NULL || base_address == (UINTPTR)0u ||
-        timeout_polls == 0u) {
+        timeout_polls == 0u || draft == NULL || emit == NULL) {
         return -1;
     }
+    memset(&config, 0, sizeof(config));
     platform->base_address = base_address;
     platform->launch_timeout_polls = timeout_polls;
     config.read32 = xilinx_read32;
@@ -75,6 +78,7 @@ int spec_xilinx_runtime_init(spec_runtime_t *runtime,
     config.emit = emit;
     config.emit_context = emit_context;
     config.timeout_polls = timeout_polls;
+    config.enable_target_fallback = 1u;
     return spec_runtime_init(runtime, &config);
 }
 

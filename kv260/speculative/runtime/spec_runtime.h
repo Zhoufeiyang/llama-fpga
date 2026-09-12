@@ -46,6 +46,7 @@ typedef enum {
     SPEC_STATE_COMMIT_POINTER,
     SPEC_STATE_EMIT_TOKENS,
     SPEC_STATE_ACK_RESULTS,
+    SPEC_STATE_EMIT_FALLBACK,
     SPEC_STATE_COMPLETE,
     SPEC_STATE_ERROR
 } spec_runtime_state_t;
@@ -77,6 +78,7 @@ typedef struct {
     spec_emit_fn emit;
     void *emit_context;
     uint32_t timeout_polls;
+    uint8_t enable_target_fallback;
 } spec_runtime_config_t;
 
 typedef struct {
@@ -92,6 +94,8 @@ typedef struct {
     uint64_t rollback_transactions;
     uint64_t result_polls;
     uint64_t output_backpressure_stalls;
+    uint64_t fallback_invocations;
+    uint64_t fallback_tokens;
 } spec_runtime_metrics_t;
 
 typedef struct {

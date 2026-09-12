@@ -45,7 +45,7 @@ $text=($report -join "`n")
 if($LASTEXITCODE-ne 0 -or $text-notmatch 'AArch64' -or
    $text-notmatch 'spec_xilinx_runtime_init'){throw 'P7-B ELF audit failed'}
 $summary=@(
-  'P7B_BAREMETAL_BUILD_GO ARCH=AARCH64 MMIO_ADAPTER=1 INITIAL_TARGET=1 SEQUENTIAL_SAFE_LAUNCH=1',
+  'P7B_BAREMETAL_BUILD_GO ARCH=AARCH64 MMIO_ADAPTER=1 INITIAL_TARGET=1 SEQUENTIAL_SAFE_LAUNCH=1 NGRAM_BOUND=1 TARGET_FALLBACK=1',
   (& $cc --version | Select-Object -First 1),
   ($report | Where-Object {$_ -match 'Class:|Machine:|spec_xilinx_runtime_init'} | ForEach-Object {$_.Trim()})
 )
