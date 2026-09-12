@@ -61,6 +61,10 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
   val speculativeFault = Bool().setAsReg().init(False)
   val speculativeBase = UInt(10 bits).setAsReg().init(0)
   val speculativePointer = UInt(10 bits).setAsReg().init(0)
+  val candidateIds = Vec.fill(4)(Bits(16 bits).setAsReg().init(0))
+  val targetIds = Vec.fill(5)(Bits(16 bits).setAsReg().init(0))
+  val resultCount = UInt(3 bits).setAsReg().init(0)
+  val resultAck = Bool().setAsReg().init(False)
 
   ctrl.write(token, 0x00, 0)
   ctrl.write(tokenVld, 0x00, 16)
@@ -83,6 +87,13 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
   ctrl.write(speculativeCommitDelta, 0x120, 0)
   ctrl.write(speculativeCommit, 0x120, 8)
   ctrl.write(speculativeRollback, 0x124, 0)
+  for (i <- 0 until 4) {
+    ctrl.write(candidateIds(i), 0x110 + i * 4, 0)
+    ctrl.read(candidateIds(i), 0x110 + i * 4, 0)
+  }
+  ctrl.read(resultCount, 0x134, 0)
+  for (i <- 0 until 5) ctrl.read(targetIds(i), 0x140 + i * 4, 0)
+  ctrl.write(resultAck, 0x154, 0)
   ctrl.write(softReset, 0xC0, 0)
 
   tokenVld.clear()
@@ -90,10 +101,11 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
   speculativeStart.clear()
   speculativeCommit.clear()
   speculativeRollback.clear()
+  resultAck.clear()
 
   val speculativeEnd = speculativeCommitted.resize(11) + speculativeBatchK.resize(11)
   when(speculativeStart) {
-    when(!speculativeActive && speculativeBatchK >= 1 && speculativeBatchK <= 4 && speculativeEnd <= 1023) {
+    when(!speculativeActive && resultCount === 0 && speculativeBatchK >= 1 && speculativeBatchK <= 4 && speculativeEnd <= 1023) {
       speculativeBase := speculativeCommitted
       speculativePointer := speculativeEnd.resized
       speculativeActive.set()
@@ -114,6 +126,10 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
   when(speculativeRollback) {
     speculativePointer := speculativeCommitted
     speculativeActive.clear()
+  }
+  when(resultAck && !speculativeActive) {
+    resultCount.clearAll()
+    for (i <- 0 until 5) targetIds(i).clearAll()
   }
 
   val speculativeStatus = Bits(32 bits)
@@ -151,6 +167,18 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
   val argMaxIndexDly = Delay(status.argMaxIndex.resize(15), init = B(0, 15 bits), cycleCount = 2)
   val prefillDly = Delay(status.prefill, init = False, cycleCount = 2)
   val layerCntDly = Delay(status.layerCnt, init = B(0, 8 bits), cycleCount = 2)
+
+  // Preserve every verification-position prediction until PS explicitly
+  // acknowledges the result block. This prevents a new launch from silently
+  // overwriting g[0..K].
+  when(argMaxVldDly && speculativeActive) {
+    when(resultCount < 5) {
+      targetIds(resultCount) := argMaxIndexDly.resized
+      resultCount := resultCount + 1
+    } otherwise {
+      speculativeFault.set()
+    }
+  }
 
   val argMaxVldClr = Bool().setAsReg().init(False)
   ctrl.write(argMaxVldClr, 0x80, 0)

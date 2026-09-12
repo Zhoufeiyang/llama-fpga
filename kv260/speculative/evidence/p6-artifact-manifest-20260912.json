@@ -1,6 +1,6 @@
 {
-  "stage": "P6-A",
-  "source_commit": "913626c32b9c7fea79420477dc4f5048751e5ff3",
+  "stage": "P6",
+  "source_commit": "eddc6164d49cd9472804f6b04a410287bc684386",
   "tool": "Vivado Simulator 2022.2 and Python unittest",
   "artifacts": [
     {
@@ -8,6 +8,18 @@
       "path": "kv260/speculative/build/p6_acceptance_xsim/p6_acceptance_xsim.log",
       "bytes": 790,
       "sha256": "d3cdc830b98ba80e7566485d74aabc1641b58844b062962d905336c1bc20f621"
+    },
+    {
+      "name": "production_axilite_generated_rtl",
+      "path": "kv260/speculative/build/p6b_axilite_elab/AxiLiteCtrl.v",
+      "bytes": 30125,
+      "sha256": "179d4183f2fdf53abeee487d658472b7360c54138d2eed1eeb5b57f48be6ffda"
+    },
+    {
+      "name": "production_axilite_result_xsim_log",
+      "path": "kv260/speculative/build/p6b_axilite_xsim/p6b_axilite_xsim.log",
+      "bytes": 611,
+      "sha256": "24d55af5579daf15d2cc7181d2f967e3dfe4de5f2edfe615026beeab0557f80f"
     }
   ]
 }

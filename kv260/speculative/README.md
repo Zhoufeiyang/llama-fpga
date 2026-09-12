@@ -98,11 +98,15 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P5: GO`
 
-`P6: IN PROGRESS`
+`P6: GO`
 
 `P6-A greedy-acceptance RTL sub-gate: GO`
 
 `P6-A sequence-equivalence reference sub-gate: GO`
+
+`P6-B production result-buffer sub-gate: GO`
+
+`P7: IN PROGRESS`
 
 The repository baseline is commit `df89b67e50383f4716e03aac35d6a25a35b0f98e`.
 The fixed-linker application now completes end-to-end generation on KV260.
@@ -294,6 +298,9 @@ correction-token output, all-match bonus output, and commit delta generation.
 Results remain stable until consumed, and timeout/abort requests rollback with
 no commit. Self-checking xsim covers every mismatch and all-match for K=1..4.
 A Python sequence oracle additionally proves 100-token equality with
-target-only greedy decoding under an imperfect deterministic draft. Production
-LM-head capture and AXI-Lite result registers remain before P6 GO. See
-`evidence/p6a-greedy-acceptance-20260912.md`.
+target-only greedy decoding under an imperfect deterministic draft. P6-B
+connects that protocol to production control: four candidates are stored, five
+ordered LM-head argmax results are retained behind AXI-Lite, and an explicit
+acknowledgement prevents unread results from being overwritten. See
+`evidence/p6a-greedy-acceptance-20260912.md` and
+`evidence/p6b-production-results-20260912.md`.

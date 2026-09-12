@@ -103,3 +103,10 @@ backpressure, and timeout behavior with:
 ```powershell
 & .\kv260\speculative\rtl\run_p6_acceptance_xsim.ps1
 ```
+
+After elaborating `top.AxiLiteCtrlP5Test`, validate production candidate and
+target-result retention with:
+
+```powershell
+& .\kv260\speculative\rtl\run_p6b_axilite_xsim.ps1
+```
