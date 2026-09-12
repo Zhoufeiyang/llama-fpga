@@ -68,3 +68,10 @@ are checked with the actual Xilinx FP16 multiplier and accumulator models:
 ```powershell
 & .\kv260\speculative\rtl\run_p4a_qk_v_vendor.ps1
 ```
+
+P5-A adds direct-to-future-slot tentative KV writes, pointer-only commit and
+rollback, and 64-byte metadata-line read-modify-write preservation:
+
+```powershell
+& .\kv260\speculative\rtl\run_p5_xsim.ps1
+```

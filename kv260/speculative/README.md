@@ -84,6 +84,10 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P5: IN PROGRESS`
 
+`P5-A pointer-commit RTL sub-gate: GO`
+
+`P5-A metadata-line RMW sub-gate: GO`
+
 The repository baseline is commit `df89b67e50383f4716e03aac35d6a25a35b0f98e`.
 The fixed-linker application now completes end-to-end generation on KV260.
 Three reset-and-run trials on 2026-09-08 produced identical normalized response
@@ -216,3 +220,20 @@ accumulator models and pass for K=1..4, including bit-exact K=1 behavior. These
 results close P4 without rerunning full implementation. See
 `evidence/p4c-production-attention-hookup-20260911.md` and
 `evidence/p4a-vendor-qk-v-20260912.md`.
+
+## P5 implementation status
+
+P5-A adds a synthesizable transaction boundary for tentative KV writes. It
+freezes `spec_base_token`, translates candidate slots to future DDR token
+addresses, and keeps the attention-visible length equal to the committed
+pointer. Accepting a prefix advances only the pointer; rejection, abort, and
+timeout leave the committed pointer unchanged and make the tail eligible for
+overwrite without a physical rollback copy.
+
+A companion 64-byte metadata-line merge primitive preserves old committed
+scale/zero entries while updating candidate entries across the 15/16 and 31/32
+packing boundaries. Self-checking Vivado xsim covers K=1..4, accepted counts
+0..4, address/context bounds, abort, timeout, repeated tentative-slot reuse, and
+partial metadata lines. P5 remains in progress until the manager is connected
+to the production control registers and KV write path. See
+`evidence/p5a-pointer-commit-20260912.md`.
