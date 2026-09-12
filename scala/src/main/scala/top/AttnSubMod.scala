@@ -61,6 +61,32 @@ class AttnSubMod(
     val quantZero = master(Flow(Bits(quantWidth bits)))
     val quantScale = master(Flow(Bits(width bits)))
     val afterQuant = master(Flow(Fragment(Bits(quantWidth bits))))
+
+    // Optional P4-B control-plane hookup.  It is quiescent unless the
+    // speculative status bit and start handshake are both asserted, so the
+    // legacy single-token datapath does not acquire a new enable condition.
+    // Tile/softmax completions are returned by the production KV/V-AXPY
+    // adapter; the arithmetic streams below remain the existing instances.
+    val p4 = new Bundle {
+      val start = slave(Stream(attn.P4AttentionStart(maxToken)))
+      val tile = master(Stream(attn.P4AttentionTile(maxToken)))
+      val tileDone = slave(Flow(attn.P4AttentionTileDone(maxToken)))
+      val softmax = master(Stream(attn.P4AttentionSoftmax(maxToken)))
+      val softmaxDone = slave(Flow(attn.P4AttentionSoftmaxDone()))
+      val queryDone = master(Flow(UInt(2 bits)))
+      val busy = out Bool()
+      val done = out Bool()
+      val error = out Bool()
+      val errorCode = out UInt(4 bits)
+
+      // Observable production events used by the adapter's completion glue.
+      val qkValid = out Bool()
+      val qkDone = out Bool()
+      val softmaxValid = out Bool()
+      val softmaxDoneEvent = out Bool()
+      val vAxpyInputValid = out Bool()
+      val vAxpyInputLast = out Bool()
+    }
   }
 
   val status = new Bundle {
@@ -134,6 +160,32 @@ class AttnSubMod(
     exp_func = exp_func
   )
 
+  val p4Controller = new attn.P4AttentionPhaseController(
+    maxContext = maxToken,
+    tileTokens = 64,
+    maxK = 4
+  )
+
+  // The current DataPath does not yet own the tile response/V-AXPY done
+  // wires.  Keep this adapter explicit and inert until that manager is
+  // connected; this avoids fabricating a completion from a data-valid pulse.
+  p4Controller.io.start.valid := io.p4.start.valid && status.speculativeEnable
+  p4Controller.io.start.payload := io.p4.start.payload
+  io.p4.start.ready := p4Controller.io.start.ready && status.speculativeEnable
+
+  p4Controller.io.tileDone.valid := io.p4.tileDone.valid && status.speculativeEnable
+  p4Controller.io.tileDone.payload := io.p4.tileDone.payload
+  p4Controller.io.softmaxDone.valid := io.p4.softmaxDone.valid && status.speculativeEnable
+  p4Controller.io.softmaxDone.payload := io.p4.softmaxDone.payload
+
+  io.p4.tile << p4Controller.io.tile
+  io.p4.softmax << p4Controller.io.softmax
+  io.p4.queryDone << p4Controller.io.queryDone
+  io.p4.busy := p4Controller.io.busy
+  io.p4.done := p4Controller.io.done
+  io.p4.error := p4Controller.io.error
+  io.p4.errorCode := p4Controller.io.errorCode
+
   //  val softmax = new SerialSoftmaxFp32(
   //    maxSeqLen = maxToken,
   //    numOfPort = 2,
@@ -174,6 +226,16 @@ class AttnSubMod(
   softmax.io.seqLen.valid.set()
   softmax.io.seqLen.payload := Mux(status.speculativeEnable, speculativeLast, status.token).asBits
   softmax.io.output >> io.softmaxOut
+
+  // These are taps of the real production streams, not synthetic controller
+  // completions.  A V-AXPY completion remains an adapter input (tileDone)
+  // because ScalarOutSubMod/MulAddSG are outside this component.
+  io.p4.qkValid := qk.io.output.valid
+  io.p4.qkDone := qk.io.output.valid
+  io.p4.softmaxValid := softmax.io.output.valid
+  io.p4.softmaxDoneEvent := softmax.io.output.valid && softmax.io.output.last
+  io.p4.vAxpyInputValid := io.softmaxOut.valid
+  io.p4.vAxpyInputLast := io.softmaxOut.valid && io.softmaxOut.last
 
   //  exp.to << softmax.exp.to
   //  exp.from >> softmax.exp.from

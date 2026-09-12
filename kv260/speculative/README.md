@@ -56,13 +56,15 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P2 FP16 MAC/reduction sub-gate: GO`
 
-`P2: GO`
+`P2 standalone: GO; production shared GEMV/GEMM datapath: IN PROGRESS`
 
 `P3 transformer projection scheduler sub-gate: GO`
 
 `P3 P2-adapter sub-gate: GO`
 
-`P3: GO`
+`P3-B production batch-descriptor/control sub-gate: GO`
+
+`P3 production projection sequencing: IN PROGRESS`
 
 `P4 causal KV tile scheduler sub-gate: GO`
 
@@ -80,7 +82,9 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P4-A V weighted-accumulation numerical sub-gate: GO`
 
-`P4: GO`
+`P4-D production tile-control boundary sub-gate: GO`
+
+`P4 production KV/softmax/V-AXPY completion hookup: IN PROGRESS`
 
 `P5: IN PROGRESS`
 
@@ -98,7 +102,9 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P5: GO`
 
-`P6: GO`
+`P6 software acceptance/result-buffer source: GO`
+
+`P6 refreshed production RTL/board sub-gate: IN PROGRESS`
 
 `P6-A greedy-acceptance RTL sub-gate: GO`
 

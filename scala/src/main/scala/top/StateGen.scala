@@ -27,6 +27,10 @@ class StateGen(
     val dotOut = slave(Flow(Bits(6 bits)))
     val gtCnt = slave(Flow(Bits(16 bits)))
     val tokenIndexFlow = slave(Flow(Bits(6 bits)))
+    // Command-generator completion is passed through this existing state
+    // boundary so the top-level control plane has one status owner.
+    val projectionDone = in Bool()
+    val projectionError = in Bool()
   }
 
   val status = new Bundle {
@@ -48,6 +52,8 @@ class StateGen(
     val toLogitsGen = out Bool()
     val token = out UInt (log2Up(maxToken) bits)
     val layerCnt = out UInt (log2Up(layer) bits)
+    val projectionDone = out Bool()
+    val projectionError = out Bool()
   }
 
   status.enPredictor.clear()
@@ -199,6 +205,8 @@ class StateGen(
     status.toLogitsGen := ~prefill & lastLayer
     status.token := tokenCnt
     status.layerCnt := layerCnt
+    status.projectionDone := io.projectionDone
+    status.projectionError := io.projectionError
 
     //    tokenCnt.addAttribute("mark_debug", "true")
     //    layerCnt.addAttribute("mark_debug", "true")

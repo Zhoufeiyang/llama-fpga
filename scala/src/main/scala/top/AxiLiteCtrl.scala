@@ -17,6 +17,10 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
     val speculativeEnable = out Bool()
     val speculativeQuery = out UInt(2 bits)
     val speculativeCommitted = out UInt(10 bits)
+    // Production speculative batch descriptor.  It is held until the
+    // command generator accepts it, so AXI-Lite writes cannot be lost while
+    // the data path is busy.
+    val speculativeBatch = master(Stream(util.SpeculativeBatchDescriptor()))
 
     //    val attnQKVSplit = out UInt (4 bits) addTag (crossClockDomain)
     //    val attnOSplit = out UInt (4 bits) addTag (crossClockDomain)
@@ -30,6 +34,8 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
     val argMaxVld = in Bool() addTag (crossClockDomain)
     val argMaxIndex = in Bits (16 bits) addTag (crossClockDomain)
     val prefill = in Bool() addTag (crossClockDomain)
+    val projectionDone = in Bool() addTag (crossClockDomain)
+    val projectionError = in Bool() addTag (crossClockDomain)
   }
 
   val liteBus = AxiLite4(32, 32)
@@ -67,6 +73,20 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
   val resultCount = UInt(3 bits).setAsReg().init(0)
   val resultAck = Bool().setAsReg().init(False)
 
+  // Descriptor register window.  The launch bit is a pulse; all descriptor
+  // fields are registered and remain stable until descriptor.valid && ready.
+  val descriptorMode = Bool().setAsReg().init(False)
+  val descriptorK = UInt(3 bits).setAsReg().init(1)
+  val descriptorProjectionTag = Bits(6 bits).setAsReg().init(0)
+  val descriptorLayerId = UInt(8 bits).setAsReg().init(0)
+  val descriptorRows = UInt(16 bits).setAsReg().init(0)
+  val descriptorBeatsPerRow = UInt(16 bits).setAsReg().init(0)
+  val descriptorLaunch = Bool().setAsReg().init(False)
+  val descriptorPending = Bool().setAsReg().init(False)
+  val descriptorFault = Bool().setAsReg().init(False)
+  val projectionDoneSeen = Bool().setAsReg().init(False)
+  val projectionErrorSeen = Bool().setAsReg().init(False)
+
   ctrl.write(token, 0x00, 0)
   ctrl.write(tokenVld, 0x00, 16)
   ctrl.write(isPrefillToken, 0x00, 17)
@@ -99,12 +119,56 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
   ctrl.write(resultAck, 0x154, 0)
   ctrl.write(softReset, 0xC0, 0)
 
+  ctrl.write(descriptorMode, 0x160, 0)
+  ctrl.write(descriptorK, 0x160, 8)
+  ctrl.write(descriptorProjectionTag, 0x164, 0)
+  ctrl.write(descriptorLayerId, 0x168, 0)
+  ctrl.write(descriptorRows, 0x16C, 0)
+  ctrl.write(descriptorBeatsPerRow, 0x170, 0)
+  ctrl.write(descriptorLaunch, 0x174, 0)
+
   tokenVld.clear()
   softReset.clear()
   speculativeStart.clear()
   speculativeCommit.clear()
   speculativeRollback.clear()
   resultAck.clear()
+  descriptorLaunch.clear()
+
+  io.speculativeBatch.valid := descriptorPending
+  io.speculativeBatch.payload.mode := descriptorMode
+  io.speculativeBatch.payload.k := descriptorK
+  io.speculativeBatch.payload.projectionTag := descriptorProjectionTag
+  io.speculativeBatch.payload.layerId := descriptorLayerId
+  io.speculativeBatch.payload.rows := descriptorRows
+  io.speculativeBatch.payload.beatsPerRow := descriptorBeatsPerRow
+
+  val descriptorShapeValid = descriptorK >= 1 && descriptorK <= 4 &&
+    descriptorRows =/= 0 && descriptorBeatsPerRow =/= 0 &&
+    (descriptorRows.resize(19) * descriptorK.resize(19)) <= 65535
+  when(descriptorLaunch) {
+    when(!descriptorPending && descriptorShapeValid) {
+      descriptorPending.set()
+      descriptorFault.clear()
+      projectionDoneSeen.clear()
+      projectionErrorSeen.clear()
+    } otherwise {
+      descriptorFault.set()
+    }
+  }
+  when(io.speculativeBatch.fire) {
+    descriptorPending.clear()
+  }
+  projectionDoneSeen.setWhen(status.projectionDone)
+  projectionErrorSeen.setWhen(status.projectionError)
+
+  val descriptorStatus = Bits(32 bits)
+  descriptorStatus.clearAll()
+  descriptorStatus(0) := io.speculativeBatch.valid
+  descriptorStatus(1) := io.speculativeBatch.ready
+  descriptorStatus(2) := projectionDoneSeen
+  descriptorStatus(3) := projectionErrorSeen || descriptorFault
+  ctrl.read(descriptorStatus, 0x17C, 0)
 
   val speculativeEnd = speculativeCommitted.resize(11) + speculativeBatchK.resize(11)
   when(speculativeStart) {

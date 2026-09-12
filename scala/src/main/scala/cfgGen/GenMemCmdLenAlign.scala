@@ -41,6 +41,7 @@ class GenMemCmdLenAlign(
 
   val io = new Bundle {
     val tokenIndex = slave(Stream(util.AxiFrame(Bits(16 bits), userBit = 6)))
+    val speculativeBatch = slave(Stream(util.SpeculativeBatchDescriptor()))
     val mm2s = slave(Axi4Stream(dataMoverAxisCfg))
     val s2mm = master(Axi4Stream(dataMoverAxisCfg))
     val mm2sCmd = master(Stream(Bits(72 bits)))
@@ -59,11 +60,50 @@ class GenMemCmdLenAlign(
     val speculativeQuery = in UInt(2 bits)
     val speculativeCommitted = in UInt(log2Up(maxToken) bits)
     val cmdSel = if (numOfCore == 1 && dmaSplit == 1 || numOfCore == 4) in UInt (2 bits) else null
+    val projectionDone = out Bool()
+    val projectionError = out Bool()
+    val descriptorActive = out Bool()
   }
 
   import LLaMA2_7B._
 
   val token = UInt(log2Up(maxToken) bits).setAsReg().init(0)
+  val descriptorActive = Bool().setAsReg().init(False)
+  val descriptorMode = Bool().setAsReg().init(False)
+  val descriptorK = UInt(3 bits).setAsReg().init(1)
+  val descriptorProjectionTag = Bits(6 bits).setAsReg().init(0)
+  val descriptorLayerId = UInt(8 bits).setAsReg().init(0)
+  val descriptorRows = UInt(16 bits).setAsReg().init(0)
+  val descriptorBeatsPerRow = UInt(16 bits).setAsReg().init(0)
+  val descriptorRowCnt = UInt(16 bits).setAsReg().init(0)
+  val descriptorBeatCnt = UInt(16 bits).setAsReg().init(0)
+  val projectionDone = Bool().setAsReg().init(False)
+  val projectionError = Bool().setAsReg().init(False)
+
+  io.speculativeBatch.ready := !descriptorActive
+  val descriptorShapeValid = io.speculativeBatch.payload.k >= 1 && io.speculativeBatch.payload.k <= 4 &&
+    io.speculativeBatch.payload.rows =/= 0 && io.speculativeBatch.payload.beatsPerRow =/= 0 &&
+    io.speculativeBatch.payload.layerId < layer &&
+    (io.speculativeBatch.payload.rows.resize(19) * io.speculativeBatch.payload.k.resize(19)) <= 65535
+  when(io.speculativeBatch.fire) {
+    when(descriptorShapeValid) {
+      descriptorActive.set()
+      descriptorMode := io.speculativeBatch.payload.mode
+      descriptorK := io.speculativeBatch.payload.k
+      descriptorProjectionTag := io.speculativeBatch.payload.projectionTag
+      descriptorLayerId := io.speculativeBatch.payload.layerId
+      // rows x beatsPerRow is the physical target-weight stream and must not
+      // grow with K. K is consumed by the shared verification datapath.
+      descriptorRows := io.speculativeBatch.payload.rows
+      descriptorBeatsPerRow := io.speculativeBatch.payload.beatsPerRow
+      descriptorRowCnt.clearAll()
+      descriptorBeatCnt.clearAll()
+      projectionDone.clear()
+      projectionError.clear()
+    } otherwise {
+      projectionError.set()
+    }
+  }
   // During verification, all KV reads use the frozen committed prefix plus
   // candidate q. The legacy counter remains untouched for target-only mode.
   val kvReadPosition = new SpeculativeKvPosition(maxToken)
@@ -650,6 +690,25 @@ class GenMemCmdLenAlign(
 
   io.mm2sCmd << mm2sCmd.s2mPipe().m2sPipe()
 
+  // Count only accepted data beats belonging to this projection. The bound is
+  // deliberately K-independent: one target-weight stream serves every
+  // candidate row in GEMM mode.
+  val descriptorStep = local.bus.fire &&
+    local.bus.dest === descriptorProjectionTag.asUInt
+  when(descriptorActive && descriptorStep) {
+    when(descriptorBeatCnt === descriptorBeatsPerRow - 1) {
+      descriptorBeatCnt.clearAll()
+      when(descriptorRowCnt === descriptorRows - 1) {
+        descriptorActive.clear()
+        projectionDone.set()
+      } otherwise {
+        descriptorRowCnt := descriptorRowCnt + 1
+      }
+    } otherwise {
+      descriptorBeatCnt := descriptorBeatCnt + 1
+    }
+  }
+
   enIncHead := kvDone || qkvNoSzDone || qkvDone
   enIncLayer := mlpDone
   when(prefill & layerCntOvf) {
@@ -657,7 +716,11 @@ class GenMemCmdLenAlign(
   }
 
   val enTokenCnt = enIncLayer & layerCntOvf
-  when(enTokenCnt) {
+  // The descriptor owns the in-flight speculative batch.  Keeping this
+  // guard on the legacy counter is what makes candidate work invisible to
+  // the committed token position; when no descriptor is valid this is the
+  // original increment condition.
+  when(enTokenCnt && !descriptorActive && !io.speculativeBatch.fire) {
     token := token + 1
   }
 
@@ -777,7 +840,9 @@ class GenMemCmdLenAlign(
         layerCnt := 0
         layerBaseNext := baseAddr + mmap.afterTokenizer_addr
         layerCntOvf.clear()
-        s2mmTokenCnt := s2mmTokenCnt + 1
+        when(!descriptorActive && !io.speculativeBatch.fire) {
+          s2mmTokenCnt := s2mmTokenCnt + 1
+        }
         tokenEnFifo.io.pop.ready.set()
       }
     }
@@ -789,6 +854,9 @@ class GenMemCmdLenAlign(
       s2mmTokenCnt := status.speculativeCommitted
     }
 
+    // Keep the physical write counter frozen while a production descriptor
+    // is in flight.  The selected token is still captured in tokenEnFifo,
+    // so the existing candidate address path remains deterministic.
     //    layerCnt.addAttribute("mark_debug", "true")
     //    s2mmTokenCnt.addAttribute("mark_debug", "true")
 
@@ -849,4 +917,8 @@ class GenMemCmdLenAlign(
     cmdFifo.io.push << s2mmCmdThrow
     io.s2mmCmd << cmdFifo.io.pop
   }
+
+  status.projectionDone := projectionDone
+  status.projectionError := projectionError
+  status.descriptorActive := descriptorActive
 }

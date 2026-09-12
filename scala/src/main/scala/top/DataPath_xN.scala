@@ -201,6 +201,21 @@ class DataPath_xN(
     coreArea(i).core.speculativeEnable := cfg.io.speculativeEnable
     coreArea(i).core.speculativeQuery := cfg.io.speculativeQuery
     coreArea(i).core.speculativeCommitted := cfg.io.speculativeCommitted.resized
+    // The descriptor is broadcast to every command generator.  A launch is
+    // accepted only when all cores are able to latch the same descriptor;
+    // this keeps the per-core command/token state aligned.
+    coreArea(i).core.speculativeBatch.valid := cfg.io.speculativeBatch.valid
+    coreArea(i).core.speculativeBatch.payload := cfg.io.speculativeBatch.payload
+    coreArea(i).core.speculativeBatch.valid.addTag(crossClockDomain)
+    coreArea(i).core.speculativeBatch.ready.addTag(crossClockDomain)
+    coreArea(i).core.speculativeBatch.payload.mode.addTag(crossClockDomain)
+    coreArea(i).core.speculativeBatch.payload.k.addTag(crossClockDomain)
+    coreArea(i).core.speculativeBatch.payload.projectionTag.addTag(crossClockDomain)
+    coreArea(i).core.speculativeBatch.payload.layerId.addTag(crossClockDomain)
+    coreArea(i).core.speculativeBatch.payload.rows.addTag(crossClockDomain)
+    coreArea(i).core.speculativeBatch.payload.beatsPerRow.addTag(crossClockDomain)
+    coreArea(i).core.toAxiLite.projectionDone.addTag(crossClockDomain)
+    coreArea(i).core.toAxiLite.projectionError.addTag(crossClockDomain)
     coreArea(i).core.speculativeEnable.addTag(crossClockDomain)
     coreArea(i).core.speculativeQuery.addTag(crossClockDomain)
     coreArea(i).core.speculativeCommitted.addTag(crossClockDomain)
@@ -224,11 +239,15 @@ class DataPath_xN(
     }
   }
 
+  cfg.io.speculativeBatch.ready := coreArea.map(_.core.speculativeBatch.ready).reduce(_ && _)
+
   cfg.status.tokenCnt := coreArea(if (numOfCore == 4) 1 else 0).core.toAxiLite.tokenCnt
   cfg.status.argMaxVld := coreArea(if (numOfCore == 4) 1 else 0).core.toAxiLite.argMaxVld
   cfg.status.argMaxIndex := coreArea(if (numOfCore == 4) 1 else 0).core.toAxiLite.argMaxIndex
   cfg.status.prefill := coreArea(if (numOfCore == 4) 1 else 0).core.toAxiLite.prefill
   cfg.status.layerCnt := coreArea(if (numOfCore == 4) 1 else 0).core.toAxiLite.layerCnt
+  cfg.status.projectionDone := coreArea(if (numOfCore == 4) 1 else 0).core.toAxiLite.projectionDone
+  cfg.status.projectionError := coreArea(if (numOfCore == 4) 1 else 0).core.toAxiLite.projectionError
 
   for (i <- 0 until numOfCore) {
     if (m_axi(i) != null) Axi4SpecRenamer(m_axi(i))

@@ -181,9 +181,13 @@ class DataPath(
     val argMaxIndex = out Bits (16 bits)
     val prefill = out Bool()
     val layerCnt = out Bits (8 bits)
+    val projectionDone = out Bool()
+    val projectionError = out Bool()
+    val descriptorActive = out Bool()
   }
 
   val tokenIndex = slave(Stream(util.AxiFrame(Bits(16 bits), userBit = 6)))
+  val speculativeBatch = slave(Stream(util.SpeculativeBatchDescriptor()))
   val speculativeEnable = in Bool()
   val speculativeQuery = in UInt(2 bits)
   val speculativeCommitted = in UInt(log2Up(maxToken) bits)
@@ -209,6 +213,7 @@ class DataPath(
   tokenIndexFifo.io.push.tdata := tokenIndexPipe.tdata
   tokenIndexFifo.io.push.tuser := tokenIndexPipe.tuser
   cmdGen.io.tokenIndex << tokenIndexFifo.io.pop
+  cmdGen.io.speculativeBatch << speculativeBatch
 
   val m_axi = if (dataMoverSplit == 1) master(Axi4(
     Axi4Config(
@@ -688,6 +693,8 @@ class DataPath(
   stateGen.io.dotOut.payload := engine.io.scalarOut.tuser
   stateGen.status.argmaxVld := sample.io.argmax.valid
   stateGen.status.endOfDecode := sample.io.endOfDecode
+  stateGen.io.projectionDone := cmdGen.status.projectionDone
+  stateGen.io.projectionError := cmdGen.status.projectionError
 
   szPacker.io.qScale << attn.io.quantScale
   szPacker.io.qZero << attn.io.quantZero
@@ -733,6 +740,9 @@ class DataPath(
   toAxiLite.argMaxIndex := sample.io.argmax.payload
   toAxiLite.prefill := stateGen.status.prefill
   toAxiLite.layerCnt := stateGen.status.layerCnt.asBits.resized
+  toAxiLite.projectionDone := stateGen.status.projectionDone
+  toAxiLite.projectionError := stateGen.status.projectionError
+  toAxiLite.descriptorActive := cmdGen.status.descriptorActive
 
   val cmdSel = if (numOfCore == 1 & dataMoverSplit == 1 || numOfCore == 4) in UInt (2 bits) addTag (crossClockDomain) else null
   if (numOfCore == 1 & dataMoverSplit == 1 || numOfCore == 4) {
