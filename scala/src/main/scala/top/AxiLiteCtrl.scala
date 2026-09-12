@@ -62,6 +62,7 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
   val speculativeBase = UInt(10 bits).setAsReg().init(0)
   val speculativePointer = UInt(10 bits).setAsReg().init(0)
   val candidateIds = Vec.fill(4)(Bits(16 bits).setAsReg().init(0))
+  val initialTargetId = Bits(16 bits).setAsReg().init(0)
   val targetIds = Vec.fill(5)(Bits(16 bits).setAsReg().init(0))
   val resultCount = UInt(3 bits).setAsReg().init(0)
   val resultAck = Bool().setAsReg().init(False)
@@ -92,6 +93,8 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
     ctrl.read(candidateIds(i), 0x110 + i * 4, 0)
   }
   ctrl.read(resultCount, 0x134, 0)
+  ctrl.write(initialTargetId, 0x138, 0)
+  ctrl.read(initialTargetId, 0x138, 0)
   for (i <- 0 until 5) ctrl.read(targetIds(i), 0x140 + i * 4, 0)
   ctrl.write(resultAck, 0x154, 0)
   ctrl.write(softReset, 0xC0, 0)
@@ -110,6 +113,10 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
       speculativePointer := speculativeEnd.resized
       speculativeActive.set()
       speculativeFault.clear()
+      // g[0] exists before the drafted candidates are launched. Seed it
+      // atomically so the following K target passes complete g[1..K].
+      targetIds(0) := initialTargetId
+      resultCount := 1
     } otherwise {
       speculativeFault.set()
     }

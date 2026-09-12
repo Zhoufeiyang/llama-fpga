@@ -10,16 +10,17 @@
 
 `runtime/spec_runtime.c` is a freestanding C99 state machine that consumes the
 production P6-B AXI-Lite contract. It performs deterministic draft callback
-steps, writes K and candidate IDs, starts verification, waits for K+1 retained
+steps, writes K, candidate IDs, and the existing target prediction `g[0]`,
+launches candidate verification through a platform callback, waits for K+1 retained
 target results, applies first-mismatch or all-match acceptance, commits only
 the accepted KV prefix, drains verified tokens with output backpressure, and
 acknowledges the result block.
 
 Timeout and PL-fault paths issue pointer rollback and result acknowledgement.
 Descriptor validation rejects K outside 1..4 and KV ranges beyond token 1023.
-MMIO, draft, and emission are callbacks so the same controller can be used in
-the Vitis bare-metal application and host tests without duplicating protocol
-logic.
+MMIO, verification launch, draft, and emission are callbacks so the same
+controller can be used in the Vitis bare-metal application and host tests
+without duplicating protocol logic.
 
 ## Verification
 
@@ -43,7 +44,6 @@ Tools: host GCC 13.3.0 and Vitis ARM GCC 11.2.0.
 & .\kv260\speculative\runtime\run_tests.ps1
 ```
 
-This sub-gate proves the transaction controller and ARM compilation. P7-B must
-bind the callbacks into the board application and exercise live PL results;
-P7-C remains responsible for board performance, acceptance-rate, traffic, and
-power measurements. No full Vivado implementation was rerun for P7-A.
+This sub-gate proves the transaction controller and ARM compilation. P7-B adds
+the Xilinx MMIO binding; live board execution and P7-C publication metrics
+remain. No full Vivado implementation was rerun for P7-A.

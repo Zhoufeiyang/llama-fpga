@@ -27,10 +27,10 @@ module p6b_axilite_results_tb;
   initial begin
     errors=0;io_ctrl_aw_valid=0;io_ctrl_w_valid=0;io_ctrl_b_ready=1;io_ctrl_ar_valid=0;io_ctrl_r_ready=1;
     io_ctrl_aw_payload_prot=0;io_ctrl_ar_payload_prot=0;status_tokenCnt=0;status_layerCnt=0;status_argMaxVld=0;status_argMaxIndex=0;status_prefill=0;
-    repeat(5)@(posedge clk);reset=0;wr(32'h108,100);wr(32'h104,4);
+    repeat(5)@(posedge clk);reset=0;wr(32'h108,100);wr(32'h104,4);wr(32'h138,20);
     for(i=0;i<4;i=i+1)wr(32'h110+i*4,10+i);
     wr(32'h100,1);repeat(3)@(posedge clk);
-    for(i=0;i<5;i=i+1)push_argmax(20+i);
+    for(i=1;i<5;i=i+1)push_argmax(20+i);
     rdreg(32'h134,rd);if(rd[2:0]!=5)errors=errors+1;
     for(i=0;i<5;i=i+1)begin rdreg(32'h140+i*4,rd);if(rd[15:0]!=20+i)errors=errors+1;end
     for(i=0;i<4;i=i+1)begin rdreg(32'h110+i*4,rd);if(rd[15:0]!=10+i)errors=errors+1;end
@@ -38,6 +38,6 @@ module p6b_axilite_results_tb;
     rdreg(32'h134,rd);if(rd[2:0]!=5)errors=errors+1;rdreg(32'h130,rd);if(!rd[2])errors=errors+1;
     wr(32'h154,1);repeat(3)@(posedge clk);rdreg(32'h134,rd);if(rd[2:0]!=0)errors=errors+1;
     if(errors)$fatal(1,"P6-B AXI result buffer failed with %0d errors",errors);
-    $display("P6B_AXILITE_RESULTS_GO CANDIDATES=4 TARGETS=5 HOLD_UNTIL_ACK=1 OVERWRITE_BLOCKED=1");$finish;
+    $display("P6B_AXILITE_RESULTS_GO CANDIDATES=4 TARGETS=5 INITIAL_TARGET=1 HOLD_UNTIL_ACK=1 OVERWRITE_BLOCKED=1");$finish;
   end
 endmodule

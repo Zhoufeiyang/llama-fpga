@@ -10,6 +10,8 @@ typedef struct {
     uint16_t emitted[16];
     unsigned emitted_count;
     unsigned stall_once;
+    uint16_t desired_targets[SPEC_TARGET_MAX];
+    unsigned complete_on_launch;
 } fake_platform_t;
 
 static uint32_t fake_read(void *context, uint32_t offset)
@@ -25,6 +27,11 @@ static void fake_write(void *context, uint32_t offset, uint32_t value)
     fake->writes[fake->write_count][0] = offset;
     fake->writes[fake->write_count][1] = value;
     ++fake->write_count;
+    if (offset == SPEC_REG_START && value != 0u) {
+        fake->regs[SPEC_REG_TARGET0 / 4u] =
+            fake->regs[SPEC_REG_INITIAL_TARGET / 4u];
+        fake->regs[SPEC_REG_RESULT_COUNT / 4u] = 1u;
+    }
 }
 
 static int deterministic_draft(void *context, const uint16_t *prefix,
@@ -44,6 +51,24 @@ static int capture_emit(void *context, uint16_t token)
     }
     fake->emitted[fake->emitted_count++] = token;
     return 1;
+}
+
+static int fake_launch_verify(void *context, const uint16_t *candidates,
+                              uint8_t k, uint16_t committed_length)
+{
+    fake_platform_t *fake = (fake_platform_t *)context;
+    unsigned i;
+    (void)candidates;
+    (void)committed_length;
+    if (fake->complete_on_launch == 0u) {
+        return 0;
+    }
+    for (i = 1u; i <= k; ++i) {
+        fake->regs[(SPEC_REG_TARGET0 + 4u * i) / 4u] =
+            fake->desired_targets[i];
+    }
+    fake->regs[SPEC_REG_RESULT_COUNT / 4u] = (uint32_t)k + 1u;
+    return 0;
 }
 
 static int run_until_terminal(spec_runtime_t *runtime, unsigned max_steps)
@@ -70,24 +95,27 @@ static int check_case(uint8_t k, uint8_t mismatch)
     config.write32 = fake_write;
     config.mmio_context = &fake;
     config.draft = deterministic_draft;
+    config.launch_verify = fake_launch_verify;
+    config.verify_context = &fake;
     config.emit = capture_emit;
     config.emit_context = &fake;
     config.timeout_polls = 8u;
     if (spec_runtime_init(&runtime, &config) != 0 ||
-        spec_runtime_begin(&runtime, 100u, 9u, k) != 0) {
+        spec_runtime_begin(&runtime, 100u, 9u,
+                           mismatch == 0u ? 90u : 10u, k) != 0) {
         return 1;
     }
 
+    fake.complete_on_launch = 1u;
     for (i = 0u; i < k; ++i) {
-        fake.regs[(SPEC_REG_TARGET0 + 4u * i) / 4u] = 10u + i;
+        fake.desired_targets[i] = 10u + i;
     }
     if (mismatch < k) {
-        fake.regs[(SPEC_REG_TARGET0 + 4u * mismatch) / 4u] = 90u + mismatch;
+        fake.desired_targets[mismatch] = 90u + mismatch;
     } else {
         expected_accept = k;
     }
-    fake.regs[(SPEC_REG_TARGET0 + 4u * k) / 4u] = 200u + k;
-    fake.regs[SPEC_REG_RESULT_COUNT / 4u] = (uint32_t)k + 1u;
+    fake.desired_targets[k] = 200u + k;
     fake.regs[SPEC_REG_STATUS / 4u] = SPEC_STATUS_ACTIVE;
     fake.stall_once = 1u;
 
@@ -98,6 +126,8 @@ static int check_case(uint8_t k, uint8_t mismatch)
         fake.emitted_count != expected_accept + 1u ||
         fake.regs[SPEC_REG_COMMITTED / 4u] != 100u ||
         fake.regs[SPEC_REG_BATCH_K / 4u] != k ||
+        fake.regs[SPEC_REG_INITIAL_TARGET / 4u] !=
+            (mismatch == 0u ? 90u : 10u) ||
         fake.regs[SPEC_REG_START / 4u] != 1u ||
         fake.regs[SPEC_REG_COMMIT / 4u] != (0x100u | expected_accept) ||
         fake.regs[SPEC_REG_RESULT_ACK / 4u] != 1u) {
@@ -131,15 +161,17 @@ static int check_invalid_descriptors(void)
     config.write32 = fake_write;
     config.mmio_context = &fake;
     config.draft = deterministic_draft;
+    config.launch_verify = fake_launch_verify;
+    config.verify_context = &fake;
     config.emit = capture_emit;
     config.emit_context = &fake;
     config.timeout_polls = 4u;
     if (spec_runtime_init(&runtime, &config) != 0) {
         return 1;
     }
-    return spec_runtime_begin(&runtime, 0u, 1u, 0u) == -1 &&
-           spec_runtime_begin(&runtime, 0u, 1u, 5u) == -1 &&
-           spec_runtime_begin(&runtime, 1021u, 1u, 4u) == -1 ? 0 : 1;
+    return spec_runtime_begin(&runtime, 0u, 1u, 2u, 0u) == -1 &&
+           spec_runtime_begin(&runtime, 0u, 1u, 2u, 5u) == -1 &&
+           spec_runtime_begin(&runtime, 1021u, 1u, 2u, 4u) == -1 ? 0 : 1;
 }
 
 static int check_timeout(void)
@@ -153,11 +185,13 @@ static int check_timeout(void)
     config.write32 = fake_write;
     config.mmio_context = &fake;
     config.draft = deterministic_draft;
+    config.launch_verify = fake_launch_verify;
+    config.verify_context = &fake;
     config.emit = capture_emit;
     config.emit_context = &fake;
     config.timeout_polls = 3u;
     if (spec_runtime_init(&runtime, &config) != 0 ||
-        spec_runtime_begin(&runtime, 30u, 4u, 2u) != 0) {
+        spec_runtime_begin(&runtime, 30u, 4u, 5u, 2u) != 0) {
         return 1;
     }
     if (run_until_terminal(&runtime, 32u) != 0 ||
@@ -180,11 +214,13 @@ static int check_pl_fault(void)
     config.write32 = fake_write;
     config.mmio_context = &fake;
     config.draft = deterministic_draft;
+    config.launch_verify = fake_launch_verify;
+    config.verify_context = &fake;
     config.emit = capture_emit;
     config.emit_context = &fake;
     config.timeout_polls = 4u;
     if (spec_runtime_init(&runtime, &config) != 0 ||
-        spec_runtime_begin(&runtime, 20u, 4u, 1u) != 0) {
+        spec_runtime_begin(&runtime, 20u, 4u, 5u, 1u) != 0) {
         return 1;
     }
     (void)spec_runtime_step(&runtime);

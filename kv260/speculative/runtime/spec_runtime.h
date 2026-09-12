@@ -19,6 +19,7 @@ extern "C" {
 #define SPEC_REG_ROLLBACK       0x124u
 #define SPEC_REG_STATUS         0x130u
 #define SPEC_REG_RESULT_COUNT   0x134u
+#define SPEC_REG_INITIAL_TARGET 0x138u
 #define SPEC_REG_TARGET0        0x140u
 #define SPEC_REG_RESULT_ACK     0x154u
 
@@ -31,6 +32,9 @@ typedef void (*spec_mmio_write32_fn)(void *context, uint32_t offset,
                                      uint32_t value);
 typedef int (*spec_draft_fn)(void *context, const uint16_t *prefix,
                              size_t prefix_length, uint16_t *next_token);
+typedef int (*spec_verify_launch_fn)(void *context,
+                                     const uint16_t *candidates, uint8_t k,
+                                     uint16_t committed_length);
 typedef int (*spec_emit_fn)(void *context, uint16_t token);
 
 typedef enum {
@@ -68,6 +72,8 @@ typedef struct {
     void *mmio_context;
     spec_draft_fn draft;
     void *draft_context;
+    spec_verify_launch_fn launch_verify;
+    void *verify_context;
     spec_emit_fn emit;
     void *emit_context;
     uint32_t timeout_polls;
@@ -81,6 +87,7 @@ typedef struct {
     uint16_t targets[SPEC_TARGET_MAX];
     uint16_t emit_tokens[SPEC_TARGET_MAX];
     uint16_t seed_token;
+    uint16_t initial_target;
     uint16_t committed_length;
     uint8_t k;
     uint8_t draft_count;
@@ -93,7 +100,7 @@ typedef struct {
 int spec_runtime_init(spec_runtime_t *runtime,
                       const spec_runtime_config_t *config);
 int spec_runtime_begin(spec_runtime_t *runtime, uint16_t committed_length,
-                       uint16_t seed_token, uint8_t k);
+                       uint16_t seed_token, uint16_t initial_target, uint8_t k);
 spec_step_result_t spec_runtime_step(spec_runtime_t *runtime);
 int spec_runtime_is_terminal(const spec_runtime_t *runtime);
 const char *spec_runtime_state_name(spec_runtime_state_t state);

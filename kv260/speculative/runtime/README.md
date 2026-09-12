@@ -16,3 +16,15 @@ root:
 ```powershell
 & .\kv260\speculative\runtime\run_tests.ps1
 ```
+
+Build and audit the Xilinx A53 MMIO adapter against the existing standalone
+BSP with:
+
+```powershell
+& .\kv260\speculative\runtime\run_p7b_baremetal_build.ps1
+```
+
+The current adapter deliberately launches one candidate at a time and holds q
+until its LM-head event arrives. This is the safe board-bring-up path for the
+existing token ingress. It validates end-to-end control semantics, not the
+final bandwidth-amortized batch-launch performance claim.

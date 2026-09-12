@@ -1,6 +1,6 @@
 {
-  "stage": "P7-A",
-  "source_commit": "6617ac4f8d522214dc03f82a26de44d7d9a94f48",
+  "stage": "P7-B-software",
+  "source_commit": "92dfca8cfe6bc228d572d15f9e5e564dfac4b215",
   "tools": [
     "GCC 13.3.0",
     "Vitis ARM GCC 11.2.0"
@@ -15,8 +15,26 @@
     {
       "name": "runtime_vitis_arm_object",
       "path": "kv260/speculative/build/p7a_runtime/spec_runtime_arm.o",
-      "bytes": 4404,
-      "sha256": "64f5dc1217081d032fa7bf05b1149bd077a886cbb56106461aae942cb962caa2"
+      "bytes": 4572,
+      "sha256": "958b8d35d3ba6adb5bb9f084dbc329c60f345a8432bc21284daa560a7da70678"
+    },
+    {
+      "name": "a53_baremetal_adapter_elf",
+      "path": "kv260/speculative/build/p7b_baremetal/p7b_baremetal_smoke.elf",
+      "bytes": 118696,
+      "sha256": "ac488ad82a783a05575fd7b6632434b8c8a69ccc4bfb2a00ee6bd510e3551fb0"
+    },
+    {
+      "name": "a53_baremetal_link_map",
+      "path": "kv260/speculative/build/p7b_baremetal/p7b_baremetal_smoke.map",
+      "bytes": 44702,
+      "sha256": "5a35527ab2acf10edf2baafc031759b90b6877c9b0432af391b3b47099601067"
+    },
+    {
+      "name": "a53_baremetal_build_log",
+      "path": "kv260/speculative/build/p7b_baremetal/p7b_baremetal_build.log",
+      "bytes": 303,
+      "sha256": "21ee1195c64fd75cc57fa5bf2ac2682c1a0a70db51000eaeb09296a8a1fcb280"
     }
   ]
 }

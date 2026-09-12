@@ -15,7 +15,8 @@ int spec_runtime_init(spec_runtime_t *runtime,
 {
     if (runtime == NULL || config == NULL || config->read32 == NULL ||
         config->write32 == NULL || config->draft == NULL ||
-        config->emit == NULL || config->timeout_polls == 0u) {
+        config->launch_verify == NULL || config->emit == NULL ||
+        config->timeout_polls == 0u) {
         return -1;
     }
     memset(runtime, 0, sizeof(*runtime));
@@ -25,7 +26,7 @@ int spec_runtime_init(spec_runtime_t *runtime,
 }
 
 int spec_runtime_begin(spec_runtime_t *runtime, uint16_t committed_length,
-                       uint16_t seed_token, uint8_t k)
+                       uint16_t seed_token, uint16_t initial_target, uint8_t k)
 {
     if (runtime == NULL || k == 0u || k > SPEC_KMAX ||
         committed_length > 1023u ||
@@ -38,6 +39,7 @@ int spec_runtime_begin(spec_runtime_t *runtime, uint16_t committed_length,
     runtime->state = SPEC_STATE_DRAFT;
     runtime->error = SPEC_ERROR_NONE;
     runtime->seed_token = seed_token;
+    runtime->initial_target = initial_target;
     runtime->committed_length = committed_length;
     runtime->k = k;
     runtime->draft_count = 0u;
@@ -89,6 +91,9 @@ spec_step_result_t spec_runtime_step(spec_runtime_t *runtime)
                                 runtime->committed_length);
         runtime->config.write32(runtime->config.mmio_context,
                                 SPEC_REG_BATCH_K, runtime->k);
+        runtime->config.write32(runtime->config.mmio_context,
+                                SPEC_REG_INITIAL_TARGET,
+                                runtime->initial_target);
         for (i = 0u; i < runtime->k; ++i) {
             runtime->config.write32(runtime->config.mmio_context,
                                     SPEC_REG_CANDIDATE0 + 4u * i,
@@ -96,6 +101,12 @@ spec_step_result_t spec_runtime_step(spec_runtime_t *runtime)
         }
         runtime->config.write32(runtime->config.mmio_context,
                                 SPEC_REG_START, 1u);
+        if (runtime->config.launch_verify(
+                runtime->config.verify_context, runtime->candidates,
+                runtime->k, runtime->committed_length) != 0) {
+            fail_transaction(runtime, SPEC_ERROR_PL_FAULT);
+            return SPEC_STEP_ERROR;
+        }
         runtime->poll_count = 0u;
         runtime->state = SPEC_STATE_READ_TARGET_RESULTS;
         return SPEC_STEP_PROGRESS;

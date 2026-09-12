@@ -110,6 +110,10 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P7-A deterministic-draft PS runtime sub-gate: GO`
 
+`P7-B A53 software-binding sub-gate: GO`
+
+`P7-B live-board sub-gate: IN PROGRESS`
+
 The repository baseline is commit `df89b67e50383f4716e03aac35d6a25a35b0f98e`.
 The fixed-linker application now completes end-to-end generation on KV260.
 Three reset-and-run trials on 2026-09-08 produced identical normalized response
@@ -315,5 +319,13 @@ verification, result collection, greedy acceptance, pointer commit, verified
 token emission, and result acknowledgement. Host tests cover K=1..4, every
 mismatch and all-match, output backpressure, timeout rollback, PL-fault
 rollback, and invalid descriptors; Vitis ARM GCC also compiles the controller
-with warnings promoted to errors. Board binding and publication measurements
-remain P7-B/P7-C. See `evidence/p7a-ps-runtime-20260912.md`.
+with warnings promoted to errors.
+
+P7-B adds the Xilinx A53 MMIO adapter and closes the missing `g[0]` contract:
+PS writes the already-available target argmax at `0x138`, start seeds result
+slot zero, and K following LM-head events complete the verification block. A
+safe compatibility launcher holds each q through its result event. The adapter
+links against the existing standalone BSP as an audited ELF64/AArch64 image.
+Live-board validation and publication measurements remain. See
+`evidence/p7a-ps-runtime-20260912.md` and
+`evidence/p7b-baremetal-binding-20260912.md`.
