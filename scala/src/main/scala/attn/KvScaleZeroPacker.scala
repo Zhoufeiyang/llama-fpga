@@ -22,6 +22,9 @@ class KvScaleZeroPacker(
     val vSzOut = master(Stream(Bits(32 bits)))
     val nextLayer = in Bool()
     val tokenIndexFlow = slave(Flow(Bits(6 bits)))
+    // Absolute physical KV slot selected by the speculative/legacy command
+    // path. Its low bits address one entry in the retained 64-byte line.
+    val tokenPosition = in UInt(16 bits)
   }
 
   val scaleIsV = Bool().setAsReg().init(False)
@@ -63,7 +66,8 @@ class KvScaleZeroPacker(
   val numOfToken = busWidth / 32
 
   val tokenIndexCnt = UInt(16 bits).setAsReg().init(0)
-  val firstTokenIndex = tokenIndexCnt.takeLow(log2Up(numOfToken)).asUInt === 0
+  val explicitTokenLow = io.tokenPosition.takeLow(log2Up(numOfToken)).asUInt
+  val firstTokenIndex = explicitTokenLow === 0
   when(io.tokenIndexFlow.valid) {
     tokenIndexCnt := tokenIndexCnt + 1
   }
@@ -88,6 +92,11 @@ class KvScaleZeroPacker(
     val depthCntOvf = depthCnt === depth - 1
     val isTokenZero = Bool().setAsReg().init(True)
     val tokenCntOvfReg = Bool().setAsReg().init(False)
+    when(io.tokenIndexFlow.valid) {
+      tokenCnt := explicitTokenLow
+      isTokenZero := explicitTokenLow === 0
+      tokenCntOvfReg := explicitTokenLow.andR
+    }
     isTokenZero.addAttribute("max_fanout", "100")
     when(dataFire) {
       depthCnt := depthCnt + 1
@@ -183,6 +192,11 @@ class KvScaleZeroPacker(
     val depthCntOvf = depthCnt === depth - 1
     val isTokenZero = Bool().setAsReg().init(True)
     val tokenCntOvfReg = Bool().setAsReg().init(False)
+    when(io.tokenIndexFlow.valid) {
+      tokenCnt := explicitTokenLow
+      isTokenZero := explicitTokenLow === 0
+      tokenCntOvfReg := explicitTokenLow.andR
+    }
     isTokenZero.addAttribute("max_fanout", "100")
     when(dataFire) {
       depthCnt := depthCnt + 1
@@ -327,6 +341,15 @@ class KvScaleZeroPacker(
 
   enInc := qOutBusPipe.fire & qOutBusPipe.last
   enStateCntInc := szToMem & busMux.io.output.fire & busMux.io.output.last
+
+  // Re-seek the retained metadata line on every launch. This is the logical
+  // rollback mechanism: a rejected future slot is overwritten in place, while
+  // an incomplete line remains buffered until its true line-end token arrives.
+  when(io.tokenIndexFlow.valid) {
+    tokenCnt := explicitTokenLow
+    szToMemNext := explicitTokenLow.andR
+    stateCntNext.clearAll()
+  }
 
   //  val select = UInt(2 bits)
   //  select := 2

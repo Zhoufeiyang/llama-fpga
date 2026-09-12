@@ -697,6 +697,11 @@ class DataPath(
   szPacker.io.nextLayer := stateGen.status.nextLayer
   szPacker.io.tokenIndexFlow.valid := tokenIndexPipe.fire
   szPacker.io.tokenIndexFlow.payload := tokenIndexPipe.tuser
+  szPacker.io.tokenPosition := Mux(
+    speculativeEnable,
+    (speculativeCommitted + speculativeQuery.resized).resized,
+    stateGen.status.token
+  ).resized
 
   axi.io.token := stateGen.status.token
   axi.io.enPredictor := stateGen.status.enPredictor

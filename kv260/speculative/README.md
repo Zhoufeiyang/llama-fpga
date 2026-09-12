@@ -92,6 +92,8 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P5-C production KV data-address sub-gate: GO`
 
+`P5-D production metadata-position sub-gate: GO`
+
 The repository baseline is commit `df89b67e50383f4716e03aac35d6a25a35b0f98e`.
 The fixed-linker application now completes end-to-end generation on KV260.
 Three reset-and-run trials on 2026-09-08 produced identical normalized response
@@ -259,3 +261,11 @@ pointer. Focused xsim covers legacy and q=0..3 selection, while complete-top
 elaboration proves the selectors and FIFO are present in production RTL. P5
 remains open only for partial scale/zero metadata RMW integration. See
 `evidence/p5c-production-kv-address-20260912.md`.
+
+P5-D makes the production `KvScaleZeroPacker` seek its K/V metadata insertion
+and line-flush state from the same explicit physical token position. This fixes
+rollback/replay within an unflushed 16-entry line and passes focused plus
+complete-top elaboration. The final P5 blocker is the case where a rejected
+candidate at position 15 or 31 has already emitted the line: production must
+retain or reread the old line before overwriting that slot. See
+`evidence/p5d-production-metadata-position-20260912.md`.
