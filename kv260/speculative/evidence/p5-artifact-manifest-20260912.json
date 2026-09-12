@@ -1,6 +1,6 @@
 {
   "stage": "P5",
-  "source_commit": "d31082386cd9e85dccd91cd13da0de32704445f4",
+  "source_commit": "eb288b6ac58a0dbfb1a32a1f5f23c250eb21b4c9",
   "tool": "SpinalHDL 1.10.2a and Vivado Simulator 2022.2",
   "artifacts": [
     {
@@ -50,6 +50,24 @@
       "path": "kv260/speculative/build/p5d_top_elab/DataPath_xN.v",
       "bytes": 2054005,
       "sha256": "c04c384d5a93e64384e16fee5482237ab5135613ed0d00d7439ffd1912688a55"
+    },
+    {
+      "name": "p5e_retained_metadata_packer_rtl",
+      "path": "kv260/speculative/build/p5e_metadata_elab/KvScaleZeroPacker.v",
+      "bytes": 106455,
+      "sha256": "7285aa16131b8b1dff71ce758fdfc1816e99fd86f5f306507ac515450c8a515b"
+    },
+    {
+      "name": "p5e_retained_metadata_xsim_log",
+      "path": "kv260/speculative/build/p5e_metadata_xsim/p5e_metadata_xsim.log",
+      "bytes": 895,
+      "sha256": "efa435b3c92986673cc7a61d338df7075cadf51f09d5163b4c68f3e6b54629bd"
+    },
+    {
+      "name": "p5e_production_top_rtl",
+      "path": "kv260/speculative/build/p5e_top_elab/DataPath_xN.v",
+      "bytes": 2054147,
+      "sha256": "b9a9479d2e2f40bbf0300c5b1ed7f17c775310d52e66dc1411f731160dddc64d"
     }
   ]
 }

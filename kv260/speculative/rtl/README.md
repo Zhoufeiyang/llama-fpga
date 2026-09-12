@@ -89,3 +89,10 @@ KV read/write position selector with:
 ```powershell
 & .\kv260\speculative\rtl\run_p5c_position_xsim.ps1
 ```
+
+After elaborating `attn.KvScaleZeroPackerP5Test`, validate retained-line replay
+at the production 15/16 and 31/32 metadata boundaries with:
+
+```powershell
+& .\kv260\speculative\rtl\run_p5e_metadata_xsim.ps1
+```

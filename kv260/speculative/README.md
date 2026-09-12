@@ -94,6 +94,12 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P5-D production metadata-position sub-gate: GO`
 
+`P5-E retained metadata-line sub-gate: GO`
+
+`P5: GO`
+
+`P6: IN PROGRESS`
+
 The repository baseline is commit `df89b67e50383f4716e03aac35d6a25a35b0f98e`.
 The fixed-linker application now completes end-to-end generation on KV260.
 Three reset-and-run trials on 2026-09-08 produced identical normalized response
@@ -269,3 +275,10 @@ complete-top elaboration. The final P5 blocker is the case where a rejected
 candidate at position 15 or 31 has already emitted the line: production must
 retain or reread the old line before overwriting that slot. See
 `evidence/p5d-production-metadata-position-20260912.md`.
+
+P5-E retains the most recently emitted production metadata line in the existing
+K/V line FIFOs. Self-checking generated-RTL simulation proves rejected
+line-ending candidates can be replayed at positions 15 and 31 while all fifteen
+committed neighbours remain bit-identical. Together with P5-A through P5-D,
+this closes the P5 pointer-commit gate. See
+`evidence/p5e-retained-metadata-line-20260912.md`.

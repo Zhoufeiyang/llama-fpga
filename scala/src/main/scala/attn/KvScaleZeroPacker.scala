@@ -92,6 +92,7 @@ class KvScaleZeroPacker(
     val depthCntOvf = depthCnt === depth - 1
     val isTokenZero = Bool().setAsReg().init(True)
     val tokenCntOvfReg = Bool().setAsReg().init(False)
+    val lineValid = Bool().setAsReg().init(False)
     when(io.tokenIndexFlow.valid) {
       tokenCnt := explicitTokenLow
       isTokenZero := explicitTokenLow === 0
@@ -116,13 +117,18 @@ class KvScaleZeroPacker(
     }
 
     val pushVec = Vec(Bits(32 bits), numOfToken)
-    pushVec.assignFromBits(fifoPop.payload)
+    pushVec.assignFromBits(Mux(isTokenZero, B(0, busWidth bits), fifoPop.payload))
     pushVec(tokenCnt) := data.payload
 
     val pushVecBits = pushVec.asBits
-    fifo.io.push.valid := dataFire & ~tokenCntOvfReg
+    // Keep the most recently emitted line resident. A rejected token at the
+    // line end can then be overwritten without rereading or copying DDR data.
+    fifo.io.push.valid := dataFire
     fifo.io.push.payload := pushVecBits
-    fifoPop.ready := dataFire & ~isTokenZero
+    fifoPop.ready := dataFire & lineValid
+    when(dataFire && depthCntOvf) {
+      lineValid.set()
+    }
 
     val toBus = Stream(Fragment(Bits(busWidth bits)))
     toBus.valid := dataFire & tokenCntOvfReg
@@ -192,6 +198,7 @@ class KvScaleZeroPacker(
     val depthCntOvf = depthCnt === depth - 1
     val isTokenZero = Bool().setAsReg().init(True)
     val tokenCntOvfReg = Bool().setAsReg().init(False)
+    val lineValid = Bool().setAsReg().init(False)
     when(io.tokenIndexFlow.valid) {
       tokenCnt := explicitTokenLow
       isTokenZero := explicitTokenLow === 0
@@ -216,13 +223,16 @@ class KvScaleZeroPacker(
     }
 
     val pushVec = Vec(Bits(32 bits), numOfToken)
-    pushVec.assignFromBits(fifoPop.payload)
+    pushVec.assignFromBits(Mux(isTokenZero, B(0, busWidth bits), fifoPop.payload))
     pushVec(tokenCnt) := data.payload
 
     val pushVecBits = pushVec.asBits
-    fifo.io.push.valid := dataFire & ~tokenCntOvfReg
+    fifo.io.push.valid := dataFire
     fifo.io.push.payload := pushVecBits
-    fifoPop.ready := dataFire & ~isTokenZero
+    fifoPop.ready := dataFire & lineValid
+    when(dataFire && depthCntOvf) {
+      lineValid.set()
+    }
 
     val toBus = Stream(Fragment(Bits(busWidth bits)))
     toBus.valid := dataFire & tokenCntOvfReg
