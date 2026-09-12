@@ -100,6 +100,10 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P6: IN PROGRESS`
 
+`P6-A greedy-acceptance RTL sub-gate: GO`
+
+`P6-A sequence-equivalence reference sub-gate: GO`
+
 The repository baseline is commit `df89b67e50383f4716e03aac35d6a25a35b0f98e`.
 The fixed-linker application now completes end-to-end generation on KV260.
 Three reset-and-run trials on 2026-09-08 produced identical normalized response
@@ -282,3 +286,14 @@ line-ending candidates can be replayed at positions 15 and 31 while all fifteen
 committed neighbours remain bit-identical. Together with P5-A through P5-D,
 this closes the P5 pointer-commit gate. See
 `evidence/p5e-retained-metadata-line-20260912.md`.
+
+## P6 implementation status
+
+P6-A implements ordered collection of `g[0..K]`, first-mismatch detection,
+correction-token output, all-match bonus output, and commit delta generation.
+Results remain stable until consumed, and timeout/abort requests rollback with
+no commit. Self-checking xsim covers every mismatch and all-match for K=1..4.
+A Python sequence oracle additionally proves 100-token equality with
+target-only greedy decoding under an imperfect deterministic draft. Production
+LM-head capture and AXI-Lite result registers remain before P6 GO. See
+`evidence/p6a-greedy-acceptance-20260912.md`.

@@ -96,3 +96,10 @@ at the production 15/16 and 31/32 metadata boundaries with:
 ```powershell
 & .\kv260\speculative\rtl\run_p5e_metadata_xsim.ps1
 ```
+
+P6-A checks greedy mismatch, correction/bonus output, commit delta,
+backpressure, and timeout behavior with:
+
+```powershell
+& .\kv260\speculative\rtl\run_p6_acceptance_xsim.ps1
+```
