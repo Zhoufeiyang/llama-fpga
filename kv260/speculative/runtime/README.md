@@ -28,3 +28,9 @@ The current adapter deliberately launches one candidate at a time and holds q
 until its LM-head event arrives. This is the safe board-bring-up path for the
 existing token ingress. It validates end-to-end control semantics, not the
 final bandwidth-amortized batch-launch performance claim.
+
+`spec_runtime_metrics_t` provides passive cumulative counters for transactions,
+drafted/target/accepted/emitted tokens, all-match and mismatch outcomes,
+rollback, result polling, and output backpressure. Use
+`spec_runtime_get_metrics()` for board logging and
+`spec_runtime_reset_metrics()` at a measurement boundary.

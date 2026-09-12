@@ -133,6 +133,18 @@ static int check_case(uint8_t k, uint8_t mismatch)
         fake.regs[SPEC_REG_RESULT_ACK / 4u] != 1u) {
         return 1;
     }
+    if (runtime.metrics.transactions_started != 1u ||
+        runtime.metrics.transactions_completed != 1u ||
+        runtime.metrics.transactions_failed != 0u ||
+        runtime.metrics.draft_tokens != k ||
+        runtime.metrics.target_result_tokens != (uint64_t)k + 1u ||
+        runtime.metrics.accepted_draft_tokens != expected_accept ||
+        runtime.metrics.emitted_tokens != expected_accept + 1u ||
+        runtime.metrics.all_match_transactions != (mismatch == k ? 1u : 0u) ||
+        runtime.metrics.mismatch_transactions != (mismatch < k ? 1u : 0u) ||
+        runtime.metrics.output_backpressure_stalls != 1u) {
+        return 1;
+    }
     for (i = 0u; i < expected_accept; ++i) {
         if (fake.emitted[i] != 10u + i) {
             return 1;
@@ -196,6 +208,8 @@ static int check_timeout(void)
     }
     if (run_until_terminal(&runtime, 32u) != 0 ||
         runtime.error != SPEC_ERROR_TIMEOUT ||
+        runtime.metrics.transactions_failed != 1u ||
+        runtime.metrics.rollback_transactions != 1u ||
         fake.regs[SPEC_REG_ROLLBACK / 4u] != 1u ||
         fake.regs[SPEC_REG_RESULT_ACK / 4u] != 1u) {
         return 1;
@@ -228,6 +242,8 @@ static int check_pl_fault(void)
     fake.regs[SPEC_REG_STATUS / 4u] = SPEC_STATUS_FAULT;
     (void)spec_runtime_step(&runtime);
     return runtime.error == SPEC_ERROR_PL_FAULT &&
+           runtime.metrics.transactions_failed == 1u &&
+           runtime.metrics.rollback_transactions == 1u &&
            fake.regs[SPEC_REG_ROLLBACK / 4u] == 1u ? 0 : 1;
 }
 
@@ -250,6 +266,6 @@ int main(void)
         fprintf(stderr, "P7-A runtime failed with %d errors\n", errors);
         return 1;
     }
-    puts("P7A_PS_RUNTIME_GO K1_TO_K4=1 BACKPRESSURE=1 TIMEOUT_ROLLBACK=1 PL_FAULT_ROLLBACK=1");
+    puts("P7A_PS_RUNTIME_GO K1_TO_K4=1 BACKPRESSURE=1 TIMEOUT_ROLLBACK=1 PL_FAULT_ROLLBACK=1 METRICS=1");
     return 0;
 }

@@ -114,6 +114,10 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P7-B live-board sub-gate: IN PROGRESS`
 
+`P7-C passive runtime-metrics sub-gate: GO`
+
+`P7-C board-measurement sub-gate: IN PROGRESS`
+
 The repository baseline is commit `df89b67e50383f4716e03aac35d6a25a35b0f98e`.
 The fixed-linker application now completes end-to-end generation on KV260.
 Three reset-and-run trials on 2026-09-08 produced identical normalized response
@@ -329,3 +333,10 @@ links against the existing standalone BSP as an audited ELF64/AArch64 image.
 Live-board validation and publication measurements remain. See
 `evidence/p7a-ps-runtime-20260912.md` and
 `evidence/p7b-baremetal-binding-20260912.md`.
+
+P7-C adds passive cumulative runtime counters for transactions, drafted and
+target tokens, accepted prefixes, emitted tokens, all-match/mismatch outcomes,
+rollback, result polling, and output backpressure. Unit tests verify exact
+counter values for every K and acceptance path. Live-board timing, traffic,
+power, and throughput values remain unclaimed until measured. See
+`evidence/p7c-runtime-metrics-20260912.md`.

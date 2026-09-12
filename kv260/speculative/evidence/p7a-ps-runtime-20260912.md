@@ -35,7 +35,7 @@ P7A_K1 mismatches_0_to_0_and_all_match=passed
 P7A_K2 mismatches_0_to_1_and_all_match=passed
 P7A_K3 mismatches_0_to_2_and_all_match=passed
 P7A_K4 mismatches_0_to_3_and_all_match=passed
-P7A_PS_RUNTIME_GO K1_TO_K4=1 BACKPRESSURE=1 TIMEOUT_ROLLBACK=1 PL_FAULT_ROLLBACK=1
+P7A_PS_RUNTIME_GO K1_TO_K4=1 BACKPRESSURE=1 TIMEOUT_ROLLBACK=1 PL_FAULT_ROLLBACK=1 METRICS=1
 ```
 
 Tools: host GCC 13.3.0 and Vitis ARM GCC 11.2.0.

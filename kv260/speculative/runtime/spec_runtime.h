@@ -80,6 +80,21 @@ typedef struct {
 } spec_runtime_config_t;
 
 typedef struct {
+    uint64_t transactions_started;
+    uint64_t transactions_completed;
+    uint64_t transactions_failed;
+    uint64_t draft_tokens;
+    uint64_t target_result_tokens;
+    uint64_t accepted_draft_tokens;
+    uint64_t emitted_tokens;
+    uint64_t all_match_transactions;
+    uint64_t mismatch_transactions;
+    uint64_t rollback_transactions;
+    uint64_t result_polls;
+    uint64_t output_backpressure_stalls;
+} spec_runtime_metrics_t;
+
+typedef struct {
     spec_runtime_config_t config;
     spec_runtime_state_t state;
     spec_error_t error;
@@ -95,6 +110,7 @@ typedef struct {
     uint8_t emit_count;
     uint8_t emit_index;
     uint32_t poll_count;
+    spec_runtime_metrics_t metrics;
 } spec_runtime_t;
 
 int spec_runtime_init(spec_runtime_t *runtime,
@@ -104,6 +120,9 @@ int spec_runtime_begin(spec_runtime_t *runtime, uint16_t committed_length,
 spec_step_result_t spec_runtime_step(spec_runtime_t *runtime);
 int spec_runtime_is_terminal(const spec_runtime_t *runtime);
 const char *spec_runtime_state_name(spec_runtime_state_t state);
+void spec_runtime_reset_metrics(spec_runtime_t *runtime);
+const spec_runtime_metrics_t *spec_runtime_get_metrics(
+    const spec_runtime_t *runtime);
 
 #ifdef __cplusplus
 }

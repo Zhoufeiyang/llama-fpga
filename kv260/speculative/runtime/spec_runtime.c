@@ -8,6 +8,8 @@ static void fail_transaction(spec_runtime_t *runtime, spec_error_t error)
     runtime->config.write32(runtime->config.mmio_context, SPEC_REG_RESULT_ACK, 1u);
     runtime->error = error;
     runtime->state = SPEC_STATE_ERROR;
+    ++runtime->metrics.transactions_failed;
+    ++runtime->metrics.rollback_transactions;
 }
 
 int spec_runtime_init(spec_runtime_t *runtime,
@@ -50,6 +52,7 @@ int spec_runtime_begin(spec_runtime_t *runtime, uint16_t committed_length,
     memset(runtime->candidates, 0, sizeof(runtime->candidates));
     memset(runtime->targets, 0, sizeof(runtime->targets));
     memset(runtime->emit_tokens, 0, sizeof(runtime->emit_tokens));
+    ++runtime->metrics.transactions_started;
     return 0;
 }
 
@@ -76,9 +79,11 @@ spec_step_result_t spec_runtime_step(spec_runtime_t *runtime)
                                   &next_token) != 0) {
             runtime->error = SPEC_ERROR_DRAFT;
             runtime->state = SPEC_STATE_ERROR;
+            ++runtime->metrics.transactions_failed;
             return SPEC_STEP_ERROR;
         }
         runtime->candidates[runtime->draft_count++] = next_token;
+        ++runtime->metrics.draft_tokens;
         if (runtime->draft_count == runtime->k) {
             runtime->state = SPEC_STATE_TARGET_VERIFY;
         }
@@ -107,11 +112,13 @@ spec_step_result_t spec_runtime_step(spec_runtime_t *runtime)
             fail_transaction(runtime, SPEC_ERROR_PL_FAULT);
             return SPEC_STEP_ERROR;
         }
+        runtime->metrics.target_result_tokens += (uint64_t)runtime->k + 1u;
         runtime->poll_count = 0u;
         runtime->state = SPEC_STATE_READ_TARGET_RESULTS;
         return SPEC_STEP_PROGRESS;
 
     case SPEC_STATE_READ_TARGET_RESULTS:
+        ++runtime->metrics.result_polls;
         status = runtime->config.read32(runtime->config.mmio_context,
                                         SPEC_REG_STATUS);
         if ((status & SPEC_STATUS_FAULT) != 0u) {
@@ -149,6 +156,12 @@ spec_step_result_t spec_runtime_step(spec_runtime_t *runtime)
         runtime->emit_tokens[runtime->accepted_count] =
             runtime->targets[runtime->accepted_count];
         runtime->emit_count = runtime->accepted_count + 1u;
+        runtime->metrics.accepted_draft_tokens += runtime->accepted_count;
+        if (runtime->accepted_count == runtime->k) {
+            ++runtime->metrics.all_match_transactions;
+        } else {
+            ++runtime->metrics.mismatch_transactions;
+        }
         runtime->emit_index = 0u;
         runtime->state = SPEC_STATE_COMMIT_POINTER;
         return SPEC_STEP_PROGRESS;
@@ -175,12 +188,15 @@ spec_step_result_t spec_runtime_step(spec_runtime_t *runtime)
                                     SPEC_REG_RESULT_ACK, 1u);
             runtime->error = SPEC_ERROR_EMIT;
             runtime->state = SPEC_STATE_ERROR;
+            ++runtime->metrics.transactions_failed;
             return SPEC_STEP_ERROR;
         }
         if (emit_result == 0) {
+            ++runtime->metrics.output_backpressure_stalls;
             return SPEC_STEP_WAITING;
         }
         ++runtime->emit_index;
+        ++runtime->metrics.emitted_tokens;
         return SPEC_STEP_PROGRESS;
     }
 
@@ -188,6 +204,7 @@ spec_step_result_t spec_runtime_step(spec_runtime_t *runtime)
         runtime->config.write32(runtime->config.mmio_context,
                                 SPEC_REG_RESULT_ACK, 1u);
         runtime->state = SPEC_STATE_COMPLETE;
+        ++runtime->metrics.transactions_completed;
         return SPEC_STEP_COMPLETE;
 
     case SPEC_STATE_COMPLETE:
@@ -198,6 +215,19 @@ spec_step_result_t spec_runtime_step(spec_runtime_t *runtime)
     default:
         return SPEC_STEP_ERROR;
     }
+}
+
+void spec_runtime_reset_metrics(spec_runtime_t *runtime)
+{
+    if (runtime != NULL) {
+        memset(&runtime->metrics, 0, sizeof(runtime->metrics));
+    }
+}
+
+const spec_runtime_metrics_t *spec_runtime_get_metrics(
+    const spec_runtime_t *runtime)
+{
+    return runtime == NULL ? NULL : &runtime->metrics;
 }
 
 int spec_runtime_is_terminal(const spec_runtime_t *runtime)
