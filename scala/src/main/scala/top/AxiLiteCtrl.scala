@@ -36,6 +36,11 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
     val prefill = in Bool() addTag (crossClockDomain)
     val projectionDone = in Bool() addTag (crossClockDomain)
     val projectionError = in Bool() addTag (crossClockDomain)
+    val perfWeightBytes = in UInt(64 bits) addTag (crossClockDomain)
+    val perfKvReadBytes = in UInt(64 bits) addTag (crossClockDomain)
+    val perfKvWriteBytes = in UInt(64 bits) addTag (crossClockDomain)
+    val perfVerifyCycles = in UInt(64 bits) addTag (crossClockDomain)
+    val perfMemoryStallCycles = in UInt(64 bits) addTag (crossClockDomain)
   }
 
   val liteBus = AxiLite4(32, 32)
@@ -169,6 +174,11 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
   descriptorStatus(2) := projectionDoneSeen
   descriptorStatus(3) := projectionErrorSeen || descriptorFault
   ctrl.read(descriptorStatus, 0x17C, 0)
+  ctrl.read(status.perfWeightBytes(31 downto 0), 0x180, 0)
+  ctrl.read(status.perfKvReadBytes(31 downto 0), 0x184, 0)
+  ctrl.read(status.perfKvWriteBytes(31 downto 0), 0x188, 0)
+  ctrl.read(status.perfVerifyCycles(31 downto 0), 0x18C, 0)
+  ctrl.read(status.perfMemoryStallCycles(31 downto 0), 0x190, 0)
 
   val speculativeEnd = speculativeCommitted.resize(11) + speculativeBatchK.resize(11)
   when(speculativeStart) {

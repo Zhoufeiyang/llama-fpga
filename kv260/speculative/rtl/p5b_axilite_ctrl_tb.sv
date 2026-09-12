@@ -15,6 +15,7 @@ module p5b_axilite_ctrl_tb;
   wire[5:0]io_speculativeBatch_payload_projectionTag;wire[7:0]io_speculativeBatch_payload_layerId;
   wire[15:0]io_speculativeBatch_payload_rows,io_speculativeBatch_payload_beatsPerRow;
   logic status_projectionDone,status_projectionError;
+  logic[63:0]status_perfWeightBytes,status_perfKvReadBytes,status_perfKvWriteBytes,status_perfVerifyCycles,status_perfMemoryStallCycles;
   integer errors;logic[31:0]rd;
   AxiLiteCtrl dut(.*);
 
@@ -39,6 +40,7 @@ module p5b_axilite_ctrl_tb;
     io_ctrl_aw_payload_prot=0;io_ctrl_ar_payload_prot=0;status_tokenCnt=0;status_layerCnt=0;
     status_argMaxVld=0;status_argMaxIndex=0;status_prefill=0;
     io_speculativeBatch_ready=1;status_projectionDone=0;status_projectionError=0;
+    status_perfWeightBytes=0;status_perfKvReadBytes=0;status_perfKvWriteBytes=0;status_perfVerifyCycles=0;status_perfMemoryStallCycles=0;
     repeat(5)@(posedge clk);reset=0;
     axil_write(32'h108,100);axil_write(32'h104,4);axil_write(32'h100,1);repeat(3)@(posedge clk);
     axil_read(32'h10c,rd);if(rd[9:0]!=100)errors=errors+1;

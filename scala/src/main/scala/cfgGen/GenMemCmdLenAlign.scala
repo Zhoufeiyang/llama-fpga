@@ -63,6 +63,12 @@ class GenMemCmdLenAlign(
     val projectionDone = out Bool()
     val projectionError = out Bool()
     val descriptorActive = out Bool()
+    val perfKvReadBeat = in Bool()
+    val perfWeightBytes = out UInt(64 bits)
+    val perfKvReadBytes = out UInt(64 bits)
+    val perfKvWriteBytes = out UInt(64 bits)
+    val perfVerifyCycles = out UInt(64 bits)
+    val perfMemoryStallCycles = out UInt(64 bits)
   }
 
   import LLaMA2_7B._
@@ -695,6 +701,14 @@ class GenMemCmdLenAlign(
   // candidate row in GEMM mode.
   val descriptorStep = local.bus.fire &&
     local.bus.dest === descriptorProjectionTag.asUInt
+  val perfCounters = new util.SpeculativePerfCounters(busWidth / 8)
+  perfCounters.io.clear := io.speculativeBatch.fire
+  perfCounters.io.active := descriptorActive
+  perfCounters.io.weightBeat := descriptorStep
+  perfCounters.io.kvReadBeat := status.perfKvReadBeat
+  perfCounters.io.kvWriteBeat := io.s2mm.fire
+  perfCounters.io.memoryStall := local.bus.valid && !local.bus.ready
+  perfCounters.io.resultStall := False
   when(descriptorActive && descriptorStep) {
     when(descriptorBeatCnt === descriptorBeatsPerRow - 1) {
       descriptorBeatCnt.clearAll()
@@ -921,4 +935,9 @@ class GenMemCmdLenAlign(
   status.projectionDone := projectionDone
   status.projectionError := projectionError
   status.descriptorActive := descriptorActive
+  status.perfWeightBytes := perfCounters.io.weightBytes
+  status.perfKvReadBytes := perfCounters.io.kvReadBytes
+  status.perfKvWriteBytes := perfCounters.io.kvWriteBytes
+  status.perfVerifyCycles := perfCounters.io.verifyCycles
+  status.perfMemoryStallCycles := perfCounters.io.memoryStallCycles
 }

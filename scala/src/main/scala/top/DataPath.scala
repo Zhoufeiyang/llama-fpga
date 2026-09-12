@@ -184,6 +184,11 @@ class DataPath(
     val projectionDone = out Bool()
     val projectionError = out Bool()
     val descriptorActive = out Bool()
+    val perfWeightBytes = out UInt(64 bits)
+    val perfKvReadBytes = out UInt(64 bits)
+    val perfKvWriteBytes = out UInt(64 bits)
+    val perfVerifyCycles = out UInt(64 bits)
+    val perfMemoryStallCycles = out UInt(64 bits)
   }
 
   val tokenIndex = slave(Stream(util.AxiFrame(Bits(16 bits), userBit = 6)))
@@ -605,6 +610,8 @@ class DataPath(
   cmdGen.status.speculativeEnable := speculativeEnable
   cmdGen.status.speculativeQuery := speculativeQuery
   cmdGen.status.speculativeCommitted := speculativeCommitted
+  cmdGen.status.perfKvReadBeat := axi.int.bus.fire &&
+    kvCacheBusTag.map(tag => axi.int.bus.tuser === tag).reduce(_ || _)
 
   // from io
 
@@ -743,6 +750,11 @@ class DataPath(
   toAxiLite.projectionDone := stateGen.status.projectionDone
   toAxiLite.projectionError := stateGen.status.projectionError
   toAxiLite.descriptorActive := cmdGen.status.descriptorActive
+  toAxiLite.perfWeightBytes := cmdGen.status.perfWeightBytes
+  toAxiLite.perfKvReadBytes := cmdGen.status.perfKvReadBytes
+  toAxiLite.perfKvWriteBytes := cmdGen.status.perfKvWriteBytes
+  toAxiLite.perfVerifyCycles := cmdGen.status.perfVerifyCycles
+  toAxiLite.perfMemoryStallCycles := cmdGen.status.perfMemoryStallCycles
 
   val cmdSel = if (numOfCore == 1 & dataMoverSplit == 1 || numOfCore == 4) in UInt (2 bits) addTag (crossClockDomain) else null
   if (numOfCore == 1 & dataMoverSplit == 1 || numOfCore == 4) {

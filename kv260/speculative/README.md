@@ -136,6 +136,10 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P7-F INT8 draft format/numerical/ARM sub-gate: GO`
 
+`P7-G production performance-counter source/register sub-gate: GO`
+
+`P7-G board performance-measurement sub-gate: IN PROGRESS`
+
 `P7 real quantized draft sub-gate: IN PROGRESS`
 
 The repository baseline is commit `df89b67e50383f4716e03aac35d6a25a35b0f98e`.
@@ -392,3 +396,12 @@ deterministic synthetic weights; it is not represented as a trained Llama
 draft and no acceptance-rate claim is made. See
 `runtime/P7F_TINY_DRAFT_FORMAT.md` and
 `evidence/p7f-tiny-int8-draft-20260912.md`.
+
+P7-G adds passive 64-bit production counters for target-weight bytes, KV read
+and write bytes, verification-active cycles, and target-memory stall cycles.
+Their low words are readable at AXI-Lite `0x180`–`0x190`; focused xsim verifies
+event scaling, active-window gating, clearing, and all five register mappings.
+These counters are instrumentation only and do not influence any ready/valid
+path.  Board-derived performance values remain unclaimed until the final
+source integration, one-time hardware build, and live measurement.  See
+`evidence/p7g-production-performance-counters-20260912.md`.
