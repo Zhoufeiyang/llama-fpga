@@ -75,3 +75,10 @@ rollback, and 64-byte metadata-line read-modify-write preservation:
 ```powershell
 & .\kv260\speculative\rtl\run_p5_xsim.ps1
 ```
+
+After elaborating `top.AxiLiteCtrlP5Test`, validate the production AXI-Lite
+pointer-control registers with:
+
+```powershell
+& .\kv260\speculative\rtl\run_p5b_axilite_xsim.ps1
+```

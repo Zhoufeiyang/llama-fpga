@@ -1,13 +1,25 @@
 {
-  "stage": "P5-A",
-  "source_commit": "3dc261e50fc45eb38fb37ea7dd66555b1416b5c8",
-  "tool": "Vivado Simulator 2022.2",
+  "stage": "P5",
+  "source_commit": "116ca68093ca9f5b6f48d3c96f88083bed59a07a",
+  "tool": "SpinalHDL 1.10.2a and Vivado Simulator 2022.2",
   "artifacts": [
     {
       "name": "pointer_and_metadata_xsim_log",
       "path": "kv260/speculative/build/p5_xsim/p5_xsim_combined.log",
       "bytes": 1480,
       "sha256": "3407303fe15c7afb43d21c7d18ffa6d9cdbd84bfee3aa5ac048c815c1b346a91"
+    },
+    {
+      "name": "production_axilite_rtl",
+      "path": "kv260/speculative/build/p5b_axilite_elab/AxiLiteCtrl.v",
+      "bytes": 26325,
+      "sha256": "da47269f52a19daddbe3cd993f62f33d4cec70ba681b6739b611a53898bcbf92"
+    },
+    {
+      "name": "production_axilite_xsim_log",
+      "path": "kv260/speculative/build/p5b_axilite_xsim/p5b_axilite_xsim.log",
+      "bytes": 668,
+      "sha256": "13e133505ffd564308781700114c31e2f8d95f4f2a50e27fa6c91ebcfbe62689"
     }
   ]
 }

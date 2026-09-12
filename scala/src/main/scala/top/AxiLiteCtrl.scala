@@ -52,6 +52,15 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
   val speculativeEnable = Bool().setAsReg().init(False)
   val speculativeQuery = UInt(2 bits).setAsReg().init(0)
   val speculativeCommitted = UInt(10 bits).setAsReg().init(0)
+  val speculativeBatchK = UInt(3 bits).setAsReg().init(1)
+  val speculativeStart = Bool().setAsReg().init(False)
+  val speculativeCommit = Bool().setAsReg().init(False)
+  val speculativeCommitDelta = UInt(3 bits).setAsReg().init(0)
+  val speculativeRollback = Bool().setAsReg().init(False)
+  val speculativeActive = Bool().setAsReg().init(False)
+  val speculativeFault = Bool().setAsReg().init(False)
+  val speculativeBase = UInt(10 bits).setAsReg().init(0)
+  val speculativePointer = UInt(10 bits).setAsReg().init(0)
 
   ctrl.write(token, 0x00, 0)
   ctrl.write(tokenVld, 0x00, 16)
@@ -64,10 +73,56 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
   ctrl.write(speculativeEnable, 0x28, 0)
   ctrl.write(speculativeQuery, 0x28, 2)
   ctrl.write(speculativeCommitted, 0x28, 16)
+  // P5 pointer-commit control plane. Candidate KV occupies the future slots
+  // [SPEC_BASE_POS, SPEC_BASE_POS+K); only COMMIT_DELTA advances visibility.
+  ctrl.write(speculativeStart, 0x100, 0)
+  ctrl.write(speculativeBatchK, 0x104, 0)
+  ctrl.write(speculativeCommitted, 0x108, 0)
+  ctrl.read(speculativeCommitted, 0x108, 0)
+  ctrl.read(speculativeBase, 0x10C, 0)
+  ctrl.write(speculativeCommitDelta, 0x120, 0)
+  ctrl.write(speculativeCommit, 0x120, 8)
+  ctrl.write(speculativeRollback, 0x124, 0)
   ctrl.write(softReset, 0xC0, 0)
 
   tokenVld.clear()
   softReset.clear()
+  speculativeStart.clear()
+  speculativeCommit.clear()
+  speculativeRollback.clear()
+
+  val speculativeEnd = speculativeCommitted.resize(11) + speculativeBatchK.resize(11)
+  when(speculativeStart) {
+    when(!speculativeActive && speculativeBatchK >= 1 && speculativeBatchK <= 4 && speculativeEnd <= 1023) {
+      speculativeBase := speculativeCommitted
+      speculativePointer := speculativeEnd.resized
+      speculativeActive.set()
+      speculativeFault.clear()
+    } otherwise {
+      speculativeFault.set()
+    }
+  }
+  when(speculativeCommit) {
+    when(speculativeActive && speculativeCommitDelta <= speculativeBatchK) {
+      speculativeCommitted := speculativeBase + speculativeCommitDelta.resized
+      speculativePointer := speculativeBase + speculativeCommitDelta.resized
+      speculativeActive.clear()
+    } otherwise {
+      speculativeFault.set()
+    }
+  }
+  when(speculativeRollback) {
+    speculativePointer := speculativeCommitted
+    speculativeActive.clear()
+  }
+
+  val speculativeStatus = Bits(32 bits)
+  speculativeStatus.clearAll()
+  speculativeStatus(0) := !speculativeActive
+  speculativeStatus(1) := speculativeActive
+  speculativeStatus(2) := speculativeFault
+  speculativeStatus(25 downto 16) := speculativePointer.asBits
+  ctrl.read(speculativeStatus, 0x130, 0)
 
   val resetCycle = 4
   val resetCnt = UInt(log2Up(resetCycle) bits).setAsReg().init(0)
@@ -148,6 +203,8 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
   io.tokenIndex.tuser := tokenUseTag
   io.tokenIndex.valid := tokenVld
   io.cmdSel := cmdSel.asUInt
+  io.presetLayer := 0
+  io.presetToken := 0
   io.speculativeEnable := speculativeEnable
   io.speculativeQuery := speculativeQuery
   io.speculativeCommitted := speculativeCommitted

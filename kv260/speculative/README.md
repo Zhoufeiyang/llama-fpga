@@ -88,6 +88,8 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P5-A metadata-line RMW sub-gate: GO`
 
+`P5-B production AXI-Lite control sub-gate: GO`
+
 The repository baseline is commit `df89b67e50383f4716e03aac35d6a25a35b0f98e`.
 The fixed-linker application now completes end-to-end generation on KV260.
 Three reset-and-run trials on 2026-09-08 produced identical normalized response
@@ -235,5 +237,14 @@ scale/zero entries while updating candidate entries across the 15/16 and 31/32
 packing boundaries. Self-checking Vivado xsim covers K=1..4, accepted counts
 0..4, address/context bounds, abort, timeout, repeated tentative-slot reuse, and
 partial metadata lines. P5 remains in progress until the manager is connected
-to the production control registers and KV write path. See
+to the production KV write path. See
 `evidence/p5a-pointer-commit-20260912.md`.
+
+P5-B adds the planned production registers at `0x100`–`0x130`. Start freezes
+the base, commit advances `COMMITTED_LEN` by the accepted prefix, rollback
+restores only the speculative pointer, and illegal K/commit requests set a
+sticky fault. Generated production RTL passes a self-checking AXI-Lite xsim
+test, and the committed register already drives the P4 attention visibility
+path. The remaining P5 gate is explicit integration with production KV write
+addresses and metadata commands. See
+`evidence/p5b-production-control-20260912.md`.
