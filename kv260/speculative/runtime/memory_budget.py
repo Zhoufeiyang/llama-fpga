@@ -12,6 +12,8 @@ DDR_LOW_END = 0x7FF00000
 DDR_HIGH_START = 0x800000000
 DDR_HIGH_END = 0x880000000
 REGION0_START = 0x00036000
+A53_APP_START = 0x73000000
+A53_APP_END = 0x7FF00000
 
 
 def align(value: int, alignment: int = 64) -> int:
@@ -20,12 +22,12 @@ def align(value: int, alignment: int = 64) -> int:
 
 def build_budget(model0_bytes: int, model1_bytes: int) -> dict:
     regions: list[dict] = [
-        {"name": "a53_code_reserved", "start": DDR_LOW_START,
-         "end": REGION0_START},
         {"name": "target_region_0", "start": REGION0_START,
          "end": REGION0_START + model1_bytes},
         {"name": "target_region_1", "start": DDR_HIGH_START,
          "end": DDR_HIGH_START + model0_bytes},
+        {"name": "a53_app_window", "start": A53_APP_START,
+         "end": A53_APP_END},
     ]
     cursor = align(REGION0_START + model1_bytes, 4096)
     allocations = [
@@ -48,18 +50,22 @@ def build_budget(model0_bytes: int, model1_bytes: int) -> dict:
     for left, right in zip(ordered_low, ordered_low[1:]):
         if left["end"] > right["start"]:
             overlaps.append([left["name"], right["name"]])
-    bounds_ok = (regions[1]["end"] <= DDR_LOW_END and
-                 regions[2]["end"] <= DDR_HIGH_END and
-                 cursor <= DDR_LOW_END)
+    target_low = next(r for r in regions if r["name"] == "target_region_0")
+    target_high = next(r for r in regions if r["name"] == "target_region_1")
+    bounds_ok = (target_low["end"] <= A53_APP_START and
+                 target_high["end"] <= DDR_HIGH_END and
+                 cursor <= A53_APP_START)
     return {
         "ddr_total_bytes": (DDR_LOW_END - DDR_LOW_START) +
                            (DDR_HIGH_END - DDR_HIGH_START),
         "target_bytes": model0_bytes + model1_bytes,
         "theoretical_tail_bytes":
-            (DDR_LOW_END - regions[1]["end"]) +
-            (DDR_HIGH_END - regions[2]["end"]),
+            (A53_APP_START - target_low["end"]) +
+            (DDR_HIGH_END - target_high["end"]),
         "runtime_reserved_bytes": sum(size for _, size in allocations),
-        "low_tail_after_runtime_bytes": DDR_LOW_END - cursor,
+        "low_tail_after_runtime_bytes": A53_APP_START - cursor,
+        "high_tail_bytes": DDR_HIGH_END - target_high["end"],
+        "a53_app_window_bytes": A53_APP_END - A53_APP_START,
         "regions": regions,
         "overlaps": overlaps,
         "go": bounds_ok and not overlaps,

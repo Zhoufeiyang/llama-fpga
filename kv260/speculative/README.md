@@ -357,8 +357,9 @@ P7-D adds a fixed-capacity trigram/lookup draft with deterministic fallback in
 the target's 16-bit tokenizer-ID space. A 4096-entry instance uses 49,152 bytes
 and passes a 100-token continuous-generation test. A static interval audit
 places the 4,024,909,824-byte target, conservative K=4 buffers, tentative KV,
-metadata, and runtime guard without overlap, leaving 225,243,136 bytes in the
-low DDR tail. A concrete neural draft artifact and its measured acceptance
+metadata, and runtime guard without overlap. The linker-aware budget reserves the complete A53
+window at `0x73000000..0x7ff00000`; it leaves 8,187,904 bytes before that
+window and 38,010,880 bytes in high DDR. A concrete neural draft artifact and its measured acceptance
 rate remain open. See `evidence/p7d-ngram-memory-budget-20260912.md`.
 
 P7-E binds the n-gram callback into the A53 build, adds target-only recovery
