@@ -1,0 +1,22 @@
+{
+  "stage": "P7-A",
+  "source_commit": "6617ac4f8d522214dc03f82a26de44d7d9a94f48",
+  "tools": [
+    "GCC 13.3.0",
+    "Vitis ARM GCC 11.2.0"
+  ],
+  "artifacts": [
+    {
+      "name": "runtime_host_test_log",
+      "path": "kv260/speculative/build/p7a_runtime/p7a_runtime_test.log",
+      "bytes": 272,
+      "sha256": "a52841e2919a832523417cece8d00c325d5523dbeff3e77084804e7223e27673"
+    },
+    {
+      "name": "runtime_vitis_arm_object",
+      "path": "kv260/speculative/build/p7a_runtime/spec_runtime_arm.o",
+      "bytes": 4404,
+      "sha256": "64f5dc1217081d032fa7bf05b1149bd077a886cbb56106461aae942cb962caa2"
+    }
+  ]
+}
