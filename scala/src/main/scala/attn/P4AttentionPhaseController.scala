@@ -31,6 +31,7 @@ case class P4AttentionTile(maxContext: Int) extends Bundle {
 case class P4AttentionTileDone(maxContext: Int) extends Bundle {
   val phase = Bool()
   val source = Bool()
+  val buffer = Bool()
   val query = UInt(2 bits)
   val startToken = UInt(log2Up(maxContext + 1) bits)
 }
@@ -68,6 +69,7 @@ class P4AttentionPhaseController(
     val tileDone = slave(Flow(P4AttentionTileDone(maxContext)))
     val softmax = master(Stream(P4AttentionSoftmax(maxContext)))
     val softmaxDone = slave(Flow(P4AttentionSoftmaxDone()))
+    val completionError = in Bool()
     val queryDone = master(Flow(UInt(2 bits)))
     val busy = out Bool()
     val done = out Bool()
@@ -94,6 +96,7 @@ class P4AttentionPhaseController(
 
   val inflightPhase = Reg(Bool()) init False
   val inflightSource = Reg(Bool()) init False
+  val inflightBuffer = Reg(Bool()) init False
   val inflightQuery = Reg(UInt(2 bits)) init 0
   val inflightStart = Reg(UInt(contextWidth bits)) init 0
 
@@ -130,6 +133,7 @@ class P4AttentionPhaseController(
 
   io.queryDone.valid := state === waitTile && io.tileDone.valid && inflightPhase && inflightSource &&
     io.tileDone.phase === inflightPhase && io.tileDone.source === inflightSource &&
+    io.tileDone.buffer === inflightBuffer &&
     io.tileDone.query === inflightQuery && io.tileDone.startToken === inflightStart
   io.queryDone.payload := queryReg
   io.busy := (state =/= idle) && (state =/= complete) && (state =/= fault)
@@ -138,7 +142,10 @@ class P4AttentionPhaseController(
   val errorCodeReg = Reg(UInt(4 bits)) init 0
   io.errorCode := errorCodeReg
 
-  when((io.tileDone.valid && state =/= waitTile) ||
+  when(io.completionError) {
+    state := fault
+    errorCodeReg := errTile
+  } elsewhen((io.tileDone.valid && state =/= waitTile) ||
     (io.softmaxDone.valid && state =/= waitSoftmax)) {
     state := fault
     errorCodeReg := errUnexpected
@@ -170,6 +177,7 @@ class P4AttentionPhaseController(
         when(io.tile.fire) {
           inflightPhase := phaseReg
           inflightSource := sourceReg
+          inflightBuffer := bufferReg
           inflightQuery := queryReg
           inflightStart := Mux(sourceReg, U(0, contextWidth bits), offsetReg)
           state := waitTile
@@ -178,6 +186,7 @@ class P4AttentionPhaseController(
       is(waitTile) {
         when(io.tileDone.valid) {
           when(io.tileDone.phase =/= inflightPhase || io.tileDone.source =/= inflightSource ||
+            io.tileDone.buffer =/= inflightBuffer ||
             io.tileDone.query =/= inflightQuery || io.tileDone.startToken =/= inflightStart) {
             state := fault
             errorCodeReg := errTile
@@ -237,7 +246,121 @@ class P4AttentionPhaseController(
   }
 }
 
+/** Completion adapter for the real production streams.
+  *
+  * QKMul exposes one reduced score as a Flow event, so the adapter counts
+  * exactly the accepted tile's tokenCount events before returning tile_done.
+  * The V side is a Flow with a required Fragment.last boundary; no V tile
+  * completion can be manufactured from a single valid pulse.  Softmax uses
+  * its actual output last marker.  All returned metadata is copied from the
+  * accepted tile/softmax request, including ping/pong buffer identity.
+  */
+class P4AttentionCompletionAdapter(maxContext: Int) extends Component {
+  val contextWidth = log2Up(maxContext + 1)
+
+  val io = new Bundle {
+    val tileAccepted = in Bool()
+    val tile = in(P4AttentionTile(maxContext))
+    val qkScoreValid = in Bool()
+    val softmaxAccepted = in Bool()
+    val softmaxQuery = in UInt(2 bits)
+    val softmaxOutputValid = in Bool()
+    val softmaxOutputLast = in Bool()
+    // One V-AXPY reduction result per tile token.  The production
+    // MulAddSG scalar output is a Flow (not a ready/valid Stream), so its
+    // Fragment.last boundary is the completion contract here.
+    val vAxpyTileOut = slave(Flow(Fragment(util.AxiFrame(Bits(16 bits), userBit = 6))))
+    val tileDone = master(Flow(P4AttentionTileDone(maxContext)))
+    val softmaxDone = master(Flow(P4AttentionSoftmaxDone()))
+    val error = out Bool()
+    val errorCode = out UInt(4 bits)
+  }
+
+  val tileActive = Reg(Bool()) init False
+  val tilePhase = Reg(Bool()) init False
+  val tileSource = Reg(Bool()) init False
+  val tileBuffer = Reg(Bool()) init False
+  val tileQuery = Reg(UInt(2 bits)) init 0
+  val tileStart = Reg(UInt(contextWidth bits)) init 0
+  val tileCount = Reg(UInt(contextWidth bits)) init 0
+  val elementCount = Reg(UInt(contextWidth bits)) init 0
+
+  val softmaxActive = Reg(Bool()) init False
+  val softmaxQueryReg = Reg(UInt(2 bits)) init 0
+  val errorReg = Reg(Bool()) init False
+  val errorCodeReg = Reg(UInt(4 bits)) init 0
+
+  val qkLast = tileCount =/= 0 && elementCount === (tileCount - 1)
+  val qkDone = tileActive && !tilePhase && io.qkScoreValid && qkLast
+
+  val vFire = tileActive && tilePhase && io.vAxpyTileOut.valid && !errorReg
+  val vLastExpected = tileCount =/= 0 && elementCount === (tileCount - 1)
+  val vDone = vFire && tileActive && tilePhase && vLastExpected && io.vAxpyTileOut.last
+  val vBadBoundary = vFire && tileActive && tilePhase &&
+    (io.vAxpyTileOut.last =/= vLastExpected)
+
+  io.tileDone.valid := qkDone || vDone
+  io.tileDone.phase := tilePhase
+  io.tileDone.source := tileSource
+  io.tileDone.buffer := tileBuffer
+  io.tileDone.query := tileQuery
+  io.tileDone.startToken := tileStart
+
+  io.softmaxDone.valid := softmaxActive && io.softmaxOutputValid && io.softmaxOutputLast
+  io.softmaxDone.query := softmaxQueryReg
+  io.error := errorReg
+  io.errorCode := errorCodeReg
+
+  when(io.tileAccepted) {
+    tileActive := True
+    tilePhase := io.tile.phase
+    tileSource := io.tile.source
+    tileBuffer := io.tile.buffer
+    tileQuery := io.tile.query
+    tileStart := io.tile.startToken
+    tileCount := io.tile.tokenCount
+    elementCount.clearAll()
+  }
+
+  when(tileActive && !tilePhase && io.qkScoreValid) {
+    when(qkLast) {
+      tileActive.clear()
+      elementCount.clearAll()
+    } otherwise {
+      elementCount := elementCount + 1
+    }
+  }
+
+  when(vFire) {
+    when(vDone) {
+      tileActive.clear()
+      elementCount.clearAll()
+    } elsewhen(vBadBoundary) {
+      tileActive.clear()
+      errorReg.set()
+      errorCodeReg := U(3, 4 bits)
+    } otherwise {
+      elementCount := elementCount + 1
+    }
+  }
+
+  when(io.softmaxAccepted) {
+    softmaxActive := True
+    softmaxQueryReg := io.softmaxQuery
+  }
+  when(io.softmaxDone.valid) {
+    softmaxActive.clear()
+  }
+
+  // An output last without an accepted request is an unsolicited completion.
+  when(io.softmaxOutputValid && io.softmaxOutputLast && !softmaxActive) {
+    errorReg.set()
+    errorCodeReg := U(5, 4 bits)
+  }
+}
+
 /** Lightweight elaboration entry point used by the focused P4-B check. */
 object P4AttentionPhaseControllerTest extends App {
   SpinalVerilog(new P4AttentionPhaseController(maxContext = 4096, tileTokens = 64, maxK = 4))
+  SpinalVerilog(new P4AttentionCompletionAdapter(maxContext = 4096))
 }

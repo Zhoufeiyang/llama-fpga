@@ -70,14 +70,18 @@ class AttnSubMod(
     val p4 = new Bundle {
       val start = slave(Stream(attn.P4AttentionStart(maxToken)))
       val tile = master(Stream(attn.P4AttentionTile(maxToken)))
-      val tileDone = slave(Flow(attn.P4AttentionTileDone(maxToken)))
       val softmax = master(Stream(attn.P4AttentionSoftmax(maxToken)))
-      val softmaxDone = slave(Flow(attn.P4AttentionSoftmaxDone()))
+      // The external V-AXPY adapter returns one reduced element per tile
+      // token and marks the final element with Fragment.last.  This is the
+      // only completion input required from outside AttnSubMod.
+      val vAxpyTileOut = slave(Flow(Fragment(util.AxiFrame(Bits(width bits), userBit = 6))))
       val queryDone = master(Flow(UInt(2 bits)))
       val busy = out Bool()
       val done = out Bool()
       val error = out Bool()
       val errorCode = out UInt(4 bits)
+      val completionError = out Bool()
+      val completionErrorCode = out UInt(4 bits)
 
       // Observable production events used by the adapter's completion glue.
       val qkValid = out Bool()
@@ -166,6 +170,8 @@ class AttnSubMod(
     maxK = 4
   )
 
+  val p4Completion = new attn.P4AttentionCompletionAdapter(maxToken)
+
   // The current DataPath does not yet own the tile response/V-AXPY done
   // wires.  Keep this adapter explicit and inert until that manager is
   // connected; this avoids fabricating a completion from a data-valid pulse.
@@ -173,10 +179,9 @@ class AttnSubMod(
   p4Controller.io.start.payload := io.p4.start.payload
   io.p4.start.ready := p4Controller.io.start.ready && status.speculativeEnable
 
-  p4Controller.io.tileDone.valid := io.p4.tileDone.valid && status.speculativeEnable
-  p4Controller.io.tileDone.payload := io.p4.tileDone.payload
-  p4Controller.io.softmaxDone.valid := io.p4.softmaxDone.valid && status.speculativeEnable
-  p4Controller.io.softmaxDone.payload := io.p4.softmaxDone.payload
+  p4Controller.io.tileDone << p4Completion.io.tileDone
+  p4Controller.io.softmaxDone << p4Completion.io.softmaxDone
+  p4Controller.io.completionError := p4Completion.io.error
 
   io.p4.tile << p4Controller.io.tile
   io.p4.softmax << p4Controller.io.softmax
@@ -185,6 +190,19 @@ class AttnSubMod(
   io.p4.done := p4Controller.io.done
   io.p4.error := p4Controller.io.error
   io.p4.errorCode := p4Controller.io.errorCode
+  io.p4.completionError := p4Completion.io.error
+  io.p4.completionErrorCode := p4Completion.io.errorCode
+
+  p4Completion.io.tileAccepted := p4Controller.io.tile.fire
+  p4Completion.io.tile := p4Controller.io.tile.payload
+  p4Completion.io.qkScoreValid := qk.io.output.valid && status.speculativeEnable
+  p4Completion.io.softmaxAccepted := p4Controller.io.softmax.fire
+  p4Completion.io.softmaxQuery := p4Controller.io.softmax.query
+  p4Completion.io.softmaxOutputValid := softmax.io.output.valid && status.speculativeEnable
+  p4Completion.io.softmaxOutputLast := softmax.io.output.last
+  p4Completion.io.vAxpyTileOut.payload := io.p4.vAxpyTileOut.payload
+  p4Completion.io.vAxpyTileOut.last := io.p4.vAxpyTileOut.last
+  p4Completion.io.vAxpyTileOut.valid := io.p4.vAxpyTileOut.valid && status.speculativeEnable
 
   //  val softmax = new SerialSoftmaxFp32(
   //    maxSeqLen = maxToken,
@@ -228,10 +246,11 @@ class AttnSubMod(
   softmax.io.output >> io.softmaxOut
 
   // These are taps of the real production streams, not synthetic controller
-  // completions.  A V-AXPY completion remains an adapter input (tileDone)
-  // because ScalarOutSubMod/MulAddSG are outside this component.
+  // completions.  QK completion is generated only after tokenCount reduced
+  // score events; softmax completion requires output.last; V completion is
+  // generated from the external V-AXPY Stream's final element.
   io.p4.qkValid := qk.io.output.valid
-  io.p4.qkDone := qk.io.output.valid
+  io.p4.qkDone := p4Completion.io.tileDone.valid && !p4Completion.io.tileDone.phase
   io.p4.softmaxValid := softmax.io.output.valid
   io.p4.softmaxDoneEvent := softmax.io.output.valid && softmax.io.output.last
   io.p4.vAxpyInputValid := io.softmaxOut.valid
