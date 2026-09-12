@@ -1,6 +1,6 @@
 {
-  "stage": "P7-C-instrumentation",
-  "source_commit": "ee289a883fe1e7f18f6ed88b499712a72663fdf0",
+  "stage": "P7-D-ngram",
+  "source_commit": "aa9c7a2e246ae5560aba451641d362c84dd219d2",
   "tools": [
     "GCC 13.3.0",
     "Vitis ARM GCC 11.2.0"
@@ -35,6 +35,24 @@
       "path": "kv260/speculative/build/p7b_baremetal/p7b_baremetal_build.log",
       "bytes": 303,
       "sha256": "c5820ebae496859dc66efe5fe940e21061ef2220a576b85c068a7d9bd78cf682"
+    },
+    {
+      "name": "ngram_draft_test_log",
+      "path": "kv260/speculative/build/p7a_runtime/p7d_draft_test.log",
+      "bytes": 112,
+      "sha256": "34707b7d660fc07a9a9b0d3b9c2f0ff29a8383a375900532e43c1e1ea637dbe7"
+    },
+    {
+      "name": "ngram_draft_arm_object",
+      "path": "kv260/speculative/build/p7a_runtime/draft_model_arm.o",
+      "bytes": 3056,
+      "sha256": "aa0456cc9d50b34e1cbebe86b304654b78b21e4a68150502377eb79773bff9e0"
+    },
+    {
+      "name": "static_ddr_budget",
+      "path": "kv260/speculative/build/p7a_runtime/p7d_memory_budget.json",
+      "bytes": 1159,
+      "sha256": "32647df603cf8d71d608f15c686d8ddd9018a2028d5c6d3c862aab7fa2ffaeed"
     }
   ]
 }

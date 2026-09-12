@@ -27,7 +27,7 @@ $shortInclude=Get-ShortPath $include
 $shortLib=Get-ShortPath $lib
 $shortLinker=Get-ShortPath $linker
 $shortBuild=Get-ShortPath $BuildDir
-$sources=@('spec_runtime.c','spec_runtime_xilinx.c','p7b_baremetal_smoke.c')
+$sources=@('spec_runtime.c','spec_runtime_xilinx.c','draft_model.c','p7b_baremetal_smoke.c')
 $objects=@()
 foreach($source in $sources){
   $src=Join-Path $shortRuntime $source

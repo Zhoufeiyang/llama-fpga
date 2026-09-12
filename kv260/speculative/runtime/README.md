@@ -34,3 +34,14 @@ drafted/target/accepted/emitted tokens, all-match and mismatch outcomes,
 rollback, result polling, and output backpressure. Use
 `spec_runtime_get_metrics()` for board logging and
 `spec_runtime_reset_metrics()` at a measurement boundary.
+
+`draft_model.c` implements a fixed-capacity trigram/lookup draft in the same
+16-bit tokenizer-ID space as the target. It performs no allocation, saturates
+observation counts, uses deterministic token-ID tie breaking, and exposes a
+runtime-compatible callback. A 4096-entry table occupies 49,152 bytes.
+
+`memory_budget.py` places the target images and conservative K=4 runtime
+buffers into the two KV260 DDR ranges, checks every interval for overlap, and
+records the remaining tail. It intentionally reserves activation, Gate/Up,
+tentative KV, metadata, and a 4 MiB runtime guard in addition to the n-gram
+table.

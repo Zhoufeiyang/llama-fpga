@@ -118,6 +118,12 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P7-C board-measurement sub-gate: IN PROGRESS`
 
+`P7-D n-gram draft sub-gate: GO`
+
+`P7-D static DDR-budget sub-gate: GO`
+
+`P7 real quantized draft sub-gate: IN PROGRESS`
+
 The repository baseline is commit `df89b67e50383f4716e03aac35d6a25a35b0f98e`.
 The fixed-linker application now completes end-to-end generation on KV260.
 Three reset-and-run trials on 2026-09-08 produced identical normalized response
@@ -340,3 +346,11 @@ rollback, result polling, and output backpressure. Unit tests verify exact
 counter values for every K and acceptance path. Live-board timing, traffic,
 power, and throughput values remain unclaimed until measured. See
 `evidence/p7c-runtime-metrics-20260912.md`.
+
+P7-D adds a fixed-capacity trigram/lookup draft with deterministic fallback in
+the target's 16-bit tokenizer-ID space. A 4096-entry instance uses 49,152 bytes
+and passes a 100-token continuous-generation test. A static interval audit
+places the 4,024,909,824-byte target, conservative K=4 buffers, tentative KV,
+metadata, and runtime guard without overlap, leaving 225,243,136 bytes in the
+low DDR tail. A concrete neural draft artifact and its measured acceptance
+rate remain open. See `evidence/p7d-ngram-memory-budget-20260912.md`.
