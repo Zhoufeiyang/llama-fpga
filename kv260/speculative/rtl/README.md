@@ -61,3 +61,10 @@ K=1..4 with:
 ```powershell
 & .\kv260\speculative\rtl\run_p4a_vendor_softmax.ps1
 ```
+
+The production QK dot product and focused V weighted-accumulation arithmetic
+are checked with the actual Xilinx FP16 multiplier and accumulator models:
+
+```powershell
+& .\kv260\speculative\rtl\run_p4a_qk_v_vendor.ps1
+```

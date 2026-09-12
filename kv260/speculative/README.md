@@ -76,7 +76,13 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P4-A production softmax numerical sub-gate: GO`
 
-`P4: IN PROGRESS`
+`P4-A production QK numerical sub-gate: GO`
+
+`P4-A V weighted-accumulation numerical sub-gate: GO`
+
+`P4: GO`
+
+`P5: IN PROGRESS`
 
 The repository baseline is commit `df89b67e50383f4716e03aac35d6a25a35b0f98e`.
 The fixed-linker application now completes end-to-end generation on KV260.
@@ -193,8 +199,7 @@ P4-B adds a batch attention phase controller that sequences the existing QK,
 stable-softmax, and V-accumulation interfaces per query while preserving the
 same causal tiled range in both sweeps. Its NumPy oracle proves tiled/dense
 equivalence for K=1..4, future-candidate isolation, INT8 dequantization, and
-tentative-only startup. Actual floating-point datapath hookup and vendor-IP
-co-simulation remain before P4 can be marked GO. See
+tentative-only startup. See
 `evidence/p4-causal-kv-tiles-20260911.md` and
 `evidence/p4b-attention-phase-controller-20260911.md`.
 
@@ -205,6 +210,9 @@ path is reused, while the softmax inclusive last index selects either legacy
 `status.token` or speculative `committed + q`. The full Scala project compiles
 with zero errors, and top-level RTL elaboration proves the register-to-softmax
 and softmax-to-V-AXPY connections. Vendor-IP softmax simulation passes finite,
-causal-length, and normalization checks for K=1..4. QK and V vendor-IP numerical
-co-simulation are still required before P4 GO. See
-`evidence/p4c-production-attention-hookup-20260911.md`.
+causal-length, and normalization checks for K=1..4. Production QK and focused V
+weighted-accumulation simulations use the actual Xilinx FP16 multiplier and
+accumulator models and pass for K=1..4, including bit-exact K=1 behavior. These
+results close P4 without rerunning full implementation. See
+`evidence/p4c-production-attention-hookup-20260911.md` and
+`evidence/p4a-vendor-qk-v-20260912.md`.
