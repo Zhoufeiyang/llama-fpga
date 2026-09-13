@@ -64,6 +64,8 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P3-B production batch-descriptor/control sub-gate: GO`
 
+`P3-C K-row embedding-command collection sub-gate: GO`
+
 `P3 production projection sequencing: IN PROGRESS`
 
 `P4 causal KV tile scheduler sub-gate: GO`
@@ -266,6 +268,14 @@ descriptor while the number of target-weight projections remains independent
 of K. A P3-to-P2 adapter locks tensor/layer identity from configuration accept
 through P2 completion. See
 `evidence/p3-transformer-projection-scheduler-20260911.md`.
+
+P3-C connects the transaction epoch and K to the real `GenMemCmdLenAlign`
+token-command boundary. The command mux stays on embedding reads until exactly
+K accepted commands, while only q=0 creates a transformer state context.
+Focused xsim covers K=1..4, epoch replacement, abort, and invalid K; the full
+top source elaborates. Projection-segment grants and downstream batched-result
+consumption remain open. See
+`evidence/p3c-production-batch-command-collector-20260913.md`.
 
 ## P4 implementation status
 

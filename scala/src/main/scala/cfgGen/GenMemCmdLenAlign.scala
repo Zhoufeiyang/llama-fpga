@@ -770,6 +770,15 @@ class GenMemCmdLenAlign(
 
   val select = UInt(3 bits).setAsReg().init(0)
   val selectNext = UInt(3 bits)
+  // Speculative verification loads all K embedding rows before any target
+  // layer weight command is allowed to advance. This converts the legacy
+  // token-major entry boundary into one K-row activation tile while leaving
+  // the K=1/legacy select sequence unchanged.
+  val speculativeTokenCollector = new SpeculativeBatchCommandCollector(4)
+  speculativeTokenCollector.io.active := status.speculativeEnable
+  speculativeTokenCollector.io.k := status.speculativeK
+  speculativeTokenCollector.io.epoch := status.speculativeEpoch
+  speculativeTokenCollector.io.commandFire := select === 0 && tokenIn.fire
   select.addAttribute("max_fanout", 100)
   selectNext := select
   select := selectNext
@@ -777,7 +786,13 @@ class GenMemCmdLenAlign(
   busTagMux.io.select := select
 
   when(select === 0 & tokenIn.fire) {
-    selectNext := 1
+    when(status.speculativeEnable) {
+      when(speculativeTokenCollector.io.advance) {
+        selectNext := 1
+      }
+    } otherwise {
+      selectNext := 1
+    }
   }
   when(select === 1 & attnLn.fire) {
     when(firstToken || prefill & layerCntOvf) {

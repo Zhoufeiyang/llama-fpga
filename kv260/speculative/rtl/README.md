@@ -125,3 +125,11 @@ then run:
 ```powershell
 & .\kv260\speculative\rtl\run_speculative_token_context_xsim.ps1
 ```
+
+The production command mux collects exactly K accepted embedding commands at
+the start of an epoch. Elaborate
+`cfgGen.SpeculativeBatchCommandCollectorTest`, then run:
+
+```powershell
+& .\kv260\speculative\rtl\run_p3c_batch_collector_xsim.ps1
+```

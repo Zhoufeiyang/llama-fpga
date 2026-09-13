@@ -55,6 +55,13 @@ module p5b_axilite_ctrl_tb;
     // Exercise the AXI-Lite candidate window through the integrated ingress.
     axil_write(32'h28,1);axil_write(32'h110,16'h1111);axil_write(32'h114,16'h2222);
     axil_write(32'h118,16'h3333);axil_write(32'h11c,16'h4444);
+    // A commit before g[0..K] is complete must neither move the pointer nor
+    // close the active epoch. Abort that deliberately faulted transaction and
+    // prove that the following valid START gets a fresh epoch.
+    axil_write(32'h108,50);axil_write(32'h104,2);axil_write(32'h100,1);
+    axil_write(32'h120,32'h00000101);repeat(3)@(posedge clk);
+    axil_read(32'h130,rd);if(!rd[1]||!rd[2]||rd[3]||io_speculativeCommitted!=50)errors=errors+1;
+    axil_write(32'h124,1);axil_write(32'h154,1);
     io_speculativeTokenIndex_ready=0;
     axil_write(32'h108,100);axil_write(32'h104,4);axil_write(32'h100,1);repeat(3)@(posedge clk);
     io_speculativeTokenIndex_ready=1;tokenSeen=0;
@@ -74,7 +81,7 @@ module p5b_axilite_ctrl_tb;
     repeat(1)@(posedge clk);
     axil_read(32'h10c,rd);if(rd[10:0]!=100)errors=errors+1;
     axil_read(32'h130,rd);if(!rd[1]||rd[3]||rd[26:16]!=104||io_speculativeCommitted!=100||
-      !io_speculativeActive||io_speculativeBase!=100||io_speculativeK!=4||io_speculativeEpoch!=1||!io_perfWindowActive)errors=errors+1;
+      !io_speculativeActive||io_speculativeBase!=100||io_speculativeK!=4||io_speculativeEpoch!=2||!io_perfWindowActive)errors=errors+1;
     for(i=0;i<4;i=i+1)push_argmax(16'h5000+i);
     axil_read(32'h130,rd);if(!rd[3])errors=errors+1;
     axil_write(32'h120,32'h00000102);repeat(3)@(posedge clk);
@@ -84,7 +91,7 @@ module p5b_axilite_ctrl_tb;
     axil_write(32'h154,1);repeat(2)@(posedge clk);
     axil_write(32'h100,1);repeat(3)@(posedge clk);axil_write(32'h124,1);repeat(3)@(posedge clk);
     axil_read(32'h108,rd);if(rd[10:0]!=102)errors=errors+1;
-    axil_read(32'h130,rd);if(!rd[0]||rd[1]||rd[26:16]!=102||io_speculativeEpoch!=2)errors=errors+1;
+    axil_read(32'h130,rd);if(!rd[0]||rd[1]||rd[26:16]!=102||io_speculativeEpoch!=3)errors=errors+1;
     $display("P5B_ROLLBACK committed=%0d",io_speculativeCommitted);
     // The final four physical slots 1020..1023 are legal and produce the
     // architected committed length 1024 after an all-accepted resolution.
@@ -93,12 +100,12 @@ module p5b_axilite_ctrl_tb;
     for(i=0;i<4;i=i+1)push_argmax(16'h6000+i);
     axil_write(32'h120,32'h00000104);repeat(3)@(posedge clk);
     axil_read(32'h108,rd);if(rd[10:0]!=1024||io_speculativeCommitted!=1024)errors=errors+1;
-    axil_read(32'h130,rd);if(rd[26:16]!=1024||io_speculativeEpoch!=3)errors=errors+1;
+    axil_read(32'h130,rd);if(rd[26:16]!=1024||io_speculativeEpoch!=4)errors=errors+1;
     $display("P5B_LAST_CONTEXT committed=%0d",io_speculativeCommitted);
     axil_write(32'h154,1);
     axil_write(32'h104,0);axil_write(32'h100,1);repeat(3)@(posedge clk);axil_read(32'h130,rd);
-    if(!rd[2]||rd[1]||clearPulses!=3)errors=errors+1;
+    if(!rd[2]||rd[1]||clearPulses!=4)errors=errors+1;
     if(errors)$fatal(1,"P5-B AXI-Lite control failed with %0d errors",errors);
-    $display("P5B_AXILITE_POINTER_CONTROL_GO REGISTERS=1 COMMIT_AFTER_RESULTS=1 ROLLBACK=1 LAST_CONTEXT_1024=1 TXN_EPOCH=1 FAULT=1 PERF_WINDOW=1 CLEAR_PULSES=%0d",clearPulses);$finish;
+    $display("P5B_AXILITE_POINTER_CONTROL_GO REGISTERS=1 EARLY_COMMIT_BLOCKED=1 COMMIT_AFTER_RESULTS=1 ROLLBACK=1 LAST_CONTEXT_1024=1 TXN_EPOCH=1 FAULT=1 PERF_WINDOW=1 CLEAR_PULSES=%0d",clearPulses);$finish;
   end
 endmodule

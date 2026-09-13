@@ -218,6 +218,12 @@ class DataPath(
   }
   val tokenIndexPipe = tokenIndex.toFlow.m2sPipe
   val tokenKind = tokenIndexPipe.tuser.takeLow(4).resize(6)
+  // One speculative transaction contributes K embedding DMA commands but
+  // owns a single transformer control context. Only q=0 may enqueue the
+  // legacy prefill/decode state token; subsequent q rows belong to the same
+  // batched activation tile.
+  val tokenControlFire = tokenIndexPipe.fire &&
+    (!speculativeActive || tokenIndexPipe.tuser(5 downto 4) === 0)
 
   //  val attnQKVSplit = in UInt(4 bits) addTag (crossClockDomain)
   //  val attnOSplit = in UInt(4 bits) addTag (crossClockDomain)
@@ -736,7 +742,7 @@ class DataPath(
   stateGen.io.busIn.fragment := axi.int.bus.tuser
   stateGen.io.busIn.last := axi.int.bus.last
   stateGen.io.gtCnt << cfgInsert.io.gtCnt
-  stateGen.io.tokenIndexFlow.valid := tokenIndexPipe.fire
+  stateGen.io.tokenIndexFlow.valid := tokenControlFire
   stateGen.io.tokenIndexFlow.payload := tokenKind
   stateGen.io.engineOut.valid := engine.io.vecOut.valid
   stateGen.io.engineOut.payload := engine.io.vecOut.tuser
@@ -753,7 +759,7 @@ class DataPath(
   szPacker.io.kSzOut >> axi.io.kSzOut
   szPacker.io.vSzOut >> axi.io.vSzOut
   szPacker.io.nextLayer := stateGen.status.nextLayer
-  szPacker.io.tokenIndexFlow.valid := tokenIndexPipe.fire
+  szPacker.io.tokenIndexFlow.valid := tokenControlFire
   szPacker.io.tokenIndexFlow.payload := tokenKind
   szPacker.io.tokenPosition := Mux(
     speculativeActive,
@@ -775,7 +781,7 @@ class DataPath(
   attn.status.token := stateGen.status.token
   ln.status.toLogitsGen := stateGen.status.toLogitsGen
 
-  vecOut.status.tokenIndexFlow.valid := tokenIndexPipe.fire
+  vecOut.status.tokenIndexFlow.valid := tokenControlFire
   vecOut.status.tokenIndexFlow.payload := tokenKind
 
   sOut.status.enPredictor := stateGen.status.enPredictor
@@ -783,7 +789,7 @@ class DataPath(
   vecOut.status.enPredictor := stateGen.status.enPredictor
 
   cfgGen.status.enPredictor := stateGen.status.enPredictor
-  cfgGen.status.tokenIndexFlow.valid := tokenIndexPipe.fire
+  cfgGen.status.tokenIndexFlow.valid := tokenControlFire
   cfgGen.status.tokenIndexFlow.payload := tokenKind
 
   toAxiLite.tokenCnt := stateGen.status.token.asBits.resized
