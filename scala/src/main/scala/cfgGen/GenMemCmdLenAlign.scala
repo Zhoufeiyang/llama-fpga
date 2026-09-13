@@ -62,8 +62,15 @@ class GenMemCmdLenAlign(
     val cmdSel = if (numOfCore == 1 && dmaSplit == 1 || numOfCore == 4) in UInt (2 bits) else null
     val projectionDone = out Bool()
     val projectionError = out Bool()
+    // Completion identity is returned with the sticky projection-done state
+    // so an external production sequencer can retire only the descriptor it
+    // issued.  The fields are latched at descriptor acceptance.
+    val projectionDoneTag = out Bits(6 bits)
+    val projectionDoneLayer = out UInt(8 bits)
     val descriptorActive = out Bool()
     val perfKvReadBeat = in Bool()
+    val perfWindowActive = in Bool()
+    val perfWindowClear = in Bool()
     val perfWeightBytes = out UInt(64 bits)
     val perfKvReadBytes = out UInt(64 bits)
     val perfKvWriteBytes = out UInt(64 bits)
@@ -90,7 +97,10 @@ class GenMemCmdLenAlign(
   val descriptorShapeValid = io.speculativeBatch.payload.k >= 1 && io.speculativeBatch.payload.k <= 4 &&
     io.speculativeBatch.payload.rows =/= 0 && io.speculativeBatch.payload.beatsPerRow =/= 0 &&
     io.speculativeBatch.payload.layerId < layer &&
-    (io.speculativeBatch.payload.rows.resize(19) * io.speculativeBatch.payload.k.resize(19)) <= 65535
+    // rows/beats are the physical streamed matrix geometry.  Candidate count
+    // K is consumed by the shared GEMM datapath and must not make a valid
+    // LM-head matrix (32000 rows at K=4) fail this physical-shape check.
+    io.speculativeBatch.payload.rows <= 65535
   when(io.speculativeBatch.fire) {
     when(descriptorShapeValid) {
       descriptorActive.set()
@@ -702,8 +712,8 @@ class GenMemCmdLenAlign(
   val descriptorStep = local.bus.fire &&
     local.bus.dest === descriptorProjectionTag.asUInt
   val perfCounters = new util.SpeculativePerfCounters(busWidth / 8)
-  perfCounters.io.clear := io.speculativeBatch.fire
-  perfCounters.io.active := descriptorActive
+  perfCounters.io.clear := status.perfWindowClear
+  perfCounters.io.active := status.perfWindowActive
   perfCounters.io.weightBeat := descriptorStep
   perfCounters.io.kvReadBeat := status.perfKvReadBeat
   perfCounters.io.kvWriteBeat := io.s2mm.fire
@@ -934,6 +944,8 @@ class GenMemCmdLenAlign(
 
   status.projectionDone := projectionDone
   status.projectionError := projectionError
+  status.projectionDoneTag := descriptorProjectionTag
+  status.projectionDoneLayer := descriptorLayerId
   status.descriptorActive := descriptorActive
   status.perfWeightBytes := perfCounters.io.weightBytes
   status.perfKvReadBytes := perfCounters.io.kvReadBytes

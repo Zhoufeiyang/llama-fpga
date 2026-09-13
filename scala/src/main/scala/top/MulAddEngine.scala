@@ -82,6 +82,10 @@ class MulAddEngine(
   mul.io.dotIn << io.dotIn
   mul.io.axpyIn << io.axpyIn
   mul.io.scale << io.preScale
+  // Legacy MulAddEngine has no speculative descriptor; retain the original
+  // single-token activation loader and address path explicitly.
+  mul.io.speculativeMode := False
+  mul.io.speculativeK := U(1, 3 bits)
   mul.io.cfg.arbitrationFrom(toMulPipe)
   mul.io.cfg.data := toMulPipe.payload
 

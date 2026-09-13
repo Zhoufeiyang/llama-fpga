@@ -17,7 +17,8 @@ class MulAddEngineNew(
                        add_func: (Flow[Bits], Flow[Bits]) => Flow[Bits],
                        acc_func: Flow[Fragment[Bits]] => Flow[Fragment[Bits]],
                        mul_func_nonblock: (Flow[Bits], Flow[Bits]) => Flow[Bits],
-                       mul_func_block: (Stream[Bits], Stream[Bits]) => Stream[Bits]
+                       mul_func_block: (Stream[Bits], Stream[Bits]) => Stream[Bits],
+                       speculativeMaxK: Int = 1
                      ) extends Component {
 
   val serialBit = width
@@ -33,6 +34,12 @@ class MulAddEngineNew(
     val vecOut = master(Flow(util.AxiFrame(Bits(parallelBit bits), userBit = 6)))
     val scalarOut = master(Flow(Fragment(util.AxiFrame(Bits(serialBit bits), userBit = 6))))
     val cfg = slave(Stream(Bits(32 bits)))
+    // Descriptor-scoped controls.  In GEMM mode the MulEngine loads a
+    // token-major activation tile (K*firstDim). The child engines derive
+    // their wider effective dot bound from these controls while the cfg
+    // stream remains the legacy 32-bit ABI.
+    val speculativeMode = in Bool()
+    val speculativeK = in UInt(3 bits)
     //    val secondDim = out Bits(16 bits)
     val preCfgTag = out Bits (6 bits)
     val postCfgTag = out Bits (6 bits)
@@ -61,7 +68,8 @@ class MulAddEngineNew(
     inLineRam = true,
     mul_latency = mul_latency,
     mul_func_nonblock = mul_func_nonblock,
-    mul_func_block = mul_func_block
+    mul_func_block = mul_func_block,
+    speculativeMaxK = speculativeMaxK
   )
 
   val add = new AddEngineNew(
@@ -83,11 +91,15 @@ class MulAddEngineNew(
   mul.io.dotIn << io.dotIn
   mul.io.axpyIn << io.axpyIn
   mul.io.scale << io.preScale
+  mul.io.speculativeMode := io.speculativeMode
+  mul.io.speculativeK := io.speculativeK
   mul.io.cfg.arbitrationFrom(toMulPipe)
   mul.io.cfg.data := toMulPipe.payload
 
   add.io.mulRes << mul.io.output
   add.io.resAdd << io.resAdd
+  add.io.speculativeMode := io.speculativeMode
+  add.io.speculativeK := io.speculativeK
   //  add.io.postScale << io.postScale
   add.io.cfg.arbitrationFrom(toAddPipe)
   add.io.cfg.data := toAddPipe.payload

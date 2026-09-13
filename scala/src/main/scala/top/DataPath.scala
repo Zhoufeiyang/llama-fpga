@@ -196,6 +196,22 @@ class DataPath(
   val speculativeEnable = in Bool()
   val speculativeQuery = in UInt(2 bits)
   val speculativeCommitted = in UInt(log2Up(maxToken) bits)
+  val perfWindowActive = in Bool()
+  val perfWindowClear = in Bool()
+
+  // The command generator owns descriptor acceptance.  Latching the same
+  // descriptor here gives the production MulAdd input front-end a stable
+  // GEMV/GEMM mode and K value without changing GenMemCmd/AxiLite interfaces.
+  val speculativeBatchEnabled = Bool().setAsReg().init(False)
+  val speculativeBatchK = UInt(3 bits).setAsReg().init(1)
+  when(speculativeBatch.fire) {
+    // Freeze the effective engine mode at the descriptor boundary.  The
+    // software enable register may be changed only for a later transaction;
+    // it must never switch RAM addressing while the current K-row tile is in
+    // flight.
+    speculativeBatchEnabled := speculativeEnable && speculativeBatch.payload.mode
+    speculativeBatchK := speculativeBatch.payload.k
+  }
   val tokenIndexPipe = tokenIndex.toFlow.m2sPipe
 
   //  val attnQKVSplit = in UInt(4 bits) addTag (crossClockDomain)
@@ -218,6 +234,7 @@ class DataPath(
   tokenIndexFifo.io.push.tdata := tokenIndexPipe.tdata
   tokenIndexFifo.io.push.tuser := tokenIndexPipe.tuser
   cmdGen.io.tokenIndex << tokenIndexFifo.io.pop
+
   cmdGen.io.speculativeBatch << speculativeBatch
 
   val m_axi = if (dataMoverSplit == 1) master(Axi4(
@@ -513,6 +530,9 @@ class DataPath(
     fp32Acc_latency = fp32Acc_latency
   )
 
+  engine.io.speculativeMode := speculativeBatchEnabled
+  engine.io.speculativeK := speculativeBatchK
+
   val node = new AllGatherSubModNew(
     id = id,
     numOfCore = numOfCore,
@@ -610,8 +630,23 @@ class DataPath(
   cmdGen.status.speculativeEnable := speculativeEnable
   cmdGen.status.speculativeQuery := speculativeQuery
   cmdGen.status.speculativeCommitted := speculativeCommitted
+  cmdGen.status.perfWindowActive := perfWindowActive
+  cmdGen.status.perfWindowClear := perfWindowClear
   cmdGen.status.perfKvReadBeat := axi.int.bus.fire &&
     kvCacheBusTag.map(tag => axi.int.bus.tuser === tag).reduce(_ || _)
+
+  // P4 production manager hookup is intentionally explicit.  Until its KV
+  // requester and V-AXPY terminal event are connected, keep the speculative
+  // controller inert so the legacy attention datapath remains unchanged.
+  attn.io.p4.start.valid := False
+  attn.io.p4.start.payload.k := 1
+  attn.io.p4.start.payload.committedTokens := 0
+  attn.io.p4.tile.ready := False
+  attn.io.p4.softmax.ready := False
+  attn.io.p4.vAxpyTileOut.valid := False
+  attn.io.p4.vAxpyTileOut.fragment.tdata.clearAll()
+  attn.io.p4.vAxpyTileOut.fragment.tuser.clearAll()
+  attn.io.p4.vAxpyTileOut.last := False
 
   // from io
 

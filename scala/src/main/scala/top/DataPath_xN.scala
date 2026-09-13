@@ -201,6 +201,8 @@ class DataPath_xN(
     coreArea(i).core.speculativeEnable := cfg.io.speculativeEnable
     coreArea(i).core.speculativeQuery := cfg.io.speculativeQuery
     coreArea(i).core.speculativeCommitted := cfg.io.speculativeCommitted.resized
+    coreArea(i).core.perfWindowActive := cfg.io.perfWindowActive
+    coreArea(i).core.perfWindowClear := cfg.io.perfWindowClear
     // The descriptor is broadcast to every command generator.  A launch is
     // accepted only when all cores are able to latch the same descriptor;
     // this keeps the per-core command/token state aligned.
@@ -224,6 +226,8 @@ class DataPath_xN(
     coreArea(i).core.speculativeEnable.addTag(crossClockDomain)
     coreArea(i).core.speculativeQuery.addTag(crossClockDomain)
     coreArea(i).core.speculativeCommitted.addTag(crossClockDomain)
+    coreArea(i).core.perfWindowActive.addTag(crossClockDomain)
+    coreArea(i).core.perfWindowClear.addTag(crossClockDomain)
     if (sync) {
       coreArea(i).core.tokenIndex << cfg.io.tokenIndex.m2sPipe.m2sPipe.toStream
       coreArea(i).core.tokenIndex.addTag(crossClockDomain)

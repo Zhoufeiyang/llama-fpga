@@ -51,6 +51,16 @@ class MulAddSGNew(
     val vecOut = master(Flow(util.AxiFrame(Bits(parallelBit bits), userBit = 6)))
     val scalarOut = master(Flow(util.AxiFrame(Bits(serialBit bits), userBit = 6)))
     val cfg = slave(Stream(Bits(32 bits)))
+    // Descriptor-scoped controls for the shared GEMV/GEMM input front-end.
+    // K is latched in DataPath from the production batch descriptor.
+    val speculativeMode = in Bool()
+    val speculativeK = in UInt(3 bits)
+    val speculativeInputWeightBeats = out UInt(32 bits)
+    val speculativeLogicalOperandReplays = out UInt(32 bits)
+    val speculativeReplayActive = out Bool()
+    val speculativeReplayDone = out Bool()
+    val speculativeReplayError = out Bool()
+    val speculativeReplayErrorCode = out Bits(4 bits)
     val preCfgTag = out Bits (6 bits)
     val postCfgTag = out Bits (6 bits)
   }
@@ -66,14 +76,31 @@ class MulAddSGNew(
   util.AxiStreamSpecRenamer(io.scalarOut)
   util.AxiStreamSpecRenamer(io.cfg)
 
+  // K activation positions are presented as one flattened activation tile to
+  // the existing MulEngine.  Reserve only the larger activation address space;
+  // the multiplier/reduction/FP32 accumulation structures remain shared.
+  val replay = new SpeculativeGemmReplay(
+    width = width,
+    bankLen = bankLen,
+    maxFirstDim = dotMaxFirstDim,
+    maxK = 4
+  )
+  replay.io.mode := io.speculativeMode
+  replay.io.k := io.speculativeK
+  replay.io.wkvIn << io.wkvIn
+  replay.io.dotIn << io.dotIn
+  replay.io.postScaleIn << io.postScale
+  replay.io.cfgIn << io.cfg
+
   val banks = Array.fill(split)(new MulAddEngineNew(
     width, bankLen / split, dotMaxFirstDim, axpyMaxFirstDim,
     mul_latency, add_latency, acc_latency,
-    add_func, acc_func, mul_func_nonblock, mul_func_block
+    add_func, acc_func, mul_func_nonblock, mul_func_block,
+    speculativeMaxK = 4
   ))
 
-  val wkvInSplit = io.wkvIn.payload.subdivideIn(split slices)
-  val dotInSplit = io.dotIn.payload.subdivideIn(split slices)
+  val wkvInSplit = replay.io.wkvOut.payload.subdivideIn(split slices)
+  val dotInSplit = replay.io.dotOut.payload.subdivideIn(split slices)
   val resAddSplit = io.resAdd.payload.subdivideIn(split slices)
 
   io.preCfgTag := banks.head.io.preCfgTag
@@ -90,27 +117,35 @@ class MulAddSGNew(
   }
 
   banks.foreach { bank =>
-    bank.io.wkvIn.valid := io.wkvIn.valid
-    bank.io.dotIn.valid := io.dotIn.valid
+    bank.io.speculativeMode := io.speculativeMode
+    bank.io.speculativeK := io.speculativeK
+    bank.io.wkvIn.valid := replay.io.wkvOut.valid
+    bank.io.dotIn.valid := replay.io.dotOut.valid
     bank.io.axpyIn.valid := io.axpyIn.valid
     bank.io.preScale.valid := io.preScale.valid
     //    bank.io.postScale.valid := io.postScale.valid
     bank.io.resAdd.valid := io.resAdd.valid
-    bank.io.cfg.valid := io.cfg.valid
+    bank.io.cfg.valid := replay.io.cfgOut.valid
 
     bank.io.axpyIn.payload := io.axpyIn.payload
     bank.io.preScale.payload := io.preScale.payload
     //    bank.io.postScale.payload := io.postScale.payload
-    bank.io.cfg.payload := io.cfg.payload
+    bank.io.cfg.payload := replay.io.cfgOut.payload
   }
 
-  io.wkvIn.ready := banks.head.io.wkvIn.ready
-  io.dotIn.ready := banks.head.io.dotIn.ready
+  replay.io.wkvOut.ready := banks.head.io.wkvIn.ready
+  replay.io.dotOut.ready := banks.head.io.dotIn.ready
+  replay.io.cfgOut.ready := banks.head.io.cfg.ready
   io.axpyIn.ready := banks.head.io.axpyIn.ready
   io.preScale.ready := banks.head.io.preScale.ready
   //  io.postScale.ready := banks.head.io.postScale.ready
   io.resAdd.ready := banks.head.io.resAdd.ready
-  io.cfg.ready := banks.head.io.cfg.ready
+  io.speculativeInputWeightBeats := replay.io.inputWeightBeats
+  io.speculativeLogicalOperandReplays := replay.io.logicalOperandReplays
+  io.speculativeReplayActive := replay.io.active
+  io.speculativeReplayDone := replay.io.replayDone
+  io.speculativeReplayError := replay.io.error
+  io.speculativeReplayErrorCode := replay.io.errorCode
 
   val fp32Acc = new Fp32AccEngine(
     banks = split,
@@ -128,7 +163,11 @@ class MulAddSGNew(
   )
 
   (fp32Acc.io.inputs, banks).zipped.foreach(_ << _.io.scalarOut)
-  io.postScale >> fp32Acc.io.postScale
+  // The replay front-end expands one physical row's B scales to K*B scales
+  // in speculative dot mode.  It is a ready/valid stream separate from the
+  // weight replay so the FP32 reduction latency cannot drop or overwrite a
+  // scale.  In legacy/axpy mode the front-end is a transparent bypass.
+  fp32Acc.io.postScale << replay.io.postScaleOut
   io.scalarOut << fp32Acc.io.output
   io.postCfgTag := Delay(banks.head.io.postCfgTag, fp32Add_latency * log2Up(split) + toFp32_latency)
 

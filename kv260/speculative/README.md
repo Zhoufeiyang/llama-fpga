@@ -56,7 +56,7 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P2 FP16 MAC/reduction sub-gate: GO`
 
-`P2 standalone: GO; production shared GEMV/GEMM datapath: IN PROGRESS`
+`P2 standalone and production shared GEMV/GEMM source/numerical gates: GO`
 
 `P3 transformer projection scheduler sub-gate: GO`
 
@@ -83,6 +83,8 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 `P4-A V weighted-accumulation numerical sub-gate: GO`
 
 `P4-D production tile-control boundary sub-gate: GO`
+
+`P4-E production completion-adapter source/xsim sub-gate: GO`
 
 `P4 production KV/softmax/V-AXPY completion hookup: IN PROGRESS`
 
@@ -139,6 +141,8 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 `P7-G production performance-counter source/register sub-gate: GO`
 
 `P7-G board performance-measurement sub-gate: IN PROGRESS`
+
+`P7-H PS hardware-metrics binding sub-gate: GO`
 
 `P7 real quantized draft sub-gate: IN PROGRESS`
 
@@ -235,6 +239,15 @@ weight beats. Production-geometry OOC synthesis checks the 128-lane wrapper and
 the exact expected IP instance topology; its shell timing report excludes the
 pre-synthesized floating-point black boxes and is therefore a structural, not
 full-path, timing result. See `evidence/p2b-fp16-backend-20260911.md`.
+
+The production `MulAddSGNew` path now accepts a K×B activation tile, buffers
+each physical B-beat weight row and its 32-bit post-scales once, and replays
+both in row/token/beat order through the shared multiplier, reduction, and
+FP32 accumulation infrastructure.  The internal effective row bound is 18
+bits, so LM-head K=3/4 does not wrap the legacy 16-bit cfg field.  Focused
+XSim passes K=1..4 on the actual Xilinx FP16 engine, and the complete
+`EdgeLLMInst` source elaborates successfully. See
+`evidence/p2-production-shared-replay-20260912.md`.
 
 ## P3 implementation status
 
@@ -405,3 +418,9 @@ These counters are instrumentation only and do not influence any ready/valid
 path.  Board-derived performance values remain unclaimed until the final
 source integration, one-time hardware build, and live measurement.  See
 `evidence/p7g-production-performance-counters-20260912.md`.
+
+P7-H samples those five PL counters after each complete `K+1` result block and
+accumulates them into 64-bit PS runtime totals before acknowledging the result
+buffer. Host K=1..4 tests check exact values, the 100-token equivalence suite
+still passes, and the A53 freestanding ELF rebuild succeeds. See
+`evidence/p7h-runtime-hardware-metrics-20260912.md`.

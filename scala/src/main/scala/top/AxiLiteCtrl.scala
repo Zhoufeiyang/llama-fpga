@@ -17,6 +17,8 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
     val speculativeEnable = out Bool()
     val speculativeQuery = out UInt(2 bits)
     val speculativeCommitted = out UInt(10 bits)
+    val perfWindowActive = out Bool()
+    val perfWindowClear = out Bool()
     // Production speculative batch descriptor.  It is held until the
     // command generator accepts it, so AXI-Lite writes cannot be lost while
     // the data path is busy.
@@ -150,7 +152,10 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
 
   val descriptorShapeValid = descriptorK >= 1 && descriptorK <= 4 &&
     descriptorRows =/= 0 && descriptorBeatsPerRow =/= 0 &&
-    (descriptorRows.resize(19) * descriptorK.resize(19)) <= 65535
+    // K is a logical candidate dimension, not a physical DMA row count.
+    // Keep the AXI-Lite launch check aligned with GenMem so LM-head K=4 is
+    // accepted instead of being rejected by rows*K overflow.
+    descriptorRows <= 65535
   when(descriptorLaunch) {
     when(!descriptorPending && descriptorShapeValid) {
       descriptorPending.set()
@@ -181,8 +186,10 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
   ctrl.read(status.perfMemoryStallCycles(31 downto 0), 0x190, 0)
 
   val speculativeEnd = speculativeCommitted.resize(11) + speculativeBatchK.resize(11)
+  val speculativeStartValid = !speculativeActive && resultCount === 0 &&
+    speculativeBatchK >= 1 && speculativeBatchK <= 4 && speculativeEnd <= 1023
   when(speculativeStart) {
-    when(!speculativeActive && resultCount === 0 && speculativeBatchK >= 1 && speculativeBatchK <= 4 && speculativeEnd <= 1023) {
+    when(speculativeStartValid) {
       speculativeBase := speculativeCommitted
       speculativePointer := speculativeEnd.resized
       speculativeActive.set()
@@ -317,6 +324,9 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
   io.speculativeEnable := speculativeEnable
   io.speculativeQuery := speculativeQuery
   io.speculativeCommitted := speculativeCommitted
+  io.perfWindowActive := speculativeActive &&
+    resultCount < (speculativeBatchK + 1).resized
+  io.perfWindowClear := speculativeStart && speculativeStartValid
 
 
   //  val attnQKVSplit = UInt(4 bits).setAsReg().init(0)

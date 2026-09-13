@@ -13,8 +13,11 @@ class MulEngine(
                  inLineRam: Boolean,
                  mul_latency: Int,
                  mul_func_nonblock: (Flow[Bits], Flow[Bits]) => Flow[Bits],
-                 mul_func_block: (Stream[Bits], Stream[Bits]) => Stream[Bits]
+                 mul_func_block: (Stream[Bits], Stream[Bits]) => Stream[Bits],
+                 speculativeMaxK: Int = 1
                ) extends Component {
+
+  require(speculativeMaxK >= 1 && speculativeMaxK <= 4)
 
   val serialBit = width
   val parallelBit = width * bankLen
@@ -38,6 +41,11 @@ class MulEngine(
     val scale = slave(Stream(Bits(serialBit bits)))
     val output = master(Stream(Bits(parallelBit bits)))
     val cfg = slave(Stream(Config()))
+    // When asserted for a dot configuration, dotIn carries a token-major
+    // K*B activation tile.  The output loop still uses B as its reduction
+    // dimension; this control only changes the activation load/read address.
+    val speculativeMode = in Bool()
+    val speculativeK = in UInt(3 bits)
     val preCfgTag = out Bits (6 bits)
     val secondDim = out Bits(16 bits)
   }
@@ -56,12 +64,13 @@ class MulEngine(
   val toDotCfg = cfgDeMux.io.outputs(0)
   val toAxpyCfg = cfgDeMux.io.outputs(1)
 
+  val activationDepth = maxFirstDim * speculativeMaxK
   val ram = new Bundle {
-    val rdPort = util.MemRdPort(Bits(parallelBit bits), maxFirstDim)
-    val wrPort = Flow(util.MemWrPort(Bits(parallelBit bits), maxFirstDim))
+    val rdPort = util.MemRdPort(Bits(parallelBit bits), activationDepth)
+    val wrPort = Flow(util.MemWrPort(Bits(parallelBit bits), activationDepth))
   }
 
-  val mem = if (inLineRam) Mem(Bits(parallelBit bits), maxFirstDim) else null
+  val mem = if (inLineRam) Mem(Bits(parallelBit bits), activationDepth) else null
   if (inLineRam) {
     mem.addAttribute("ram_style", "distributed")
     ram.rdPort.rsp := mem.readSync(enable = ram.rdPort.cmd.valid, address = ram.rdPort.cmd.payload)
@@ -77,13 +86,27 @@ class MulEngine(
     val cfgPayload = cfg.payload
 
     val enInc = Bool()
-    val (cnt, cntOvf) = util.LoopsCntGen.wireOvf(List(cfgPayload.firstDim, cfgPayload.secondDim), enInc)
+    // Keep the wire cfg in its legacy 32-bit format while widening only the
+    // internal speculative dot bound.
+    val kSafe = UInt(3 bits)
+    kSafe := io.speculativeK
+    when(io.speculativeK === 0)(kSafe := 1)
+    val secondDimCount = cfgPayload.secondDim.resize(18) + U(1, 18 bits)
+    val speculativeSecondDimBound =
+      (secondDimCount * kSafe.resize(18) - U(1, 21 bits)).resize(18)
+    val secondDimBound = UInt(18 bits)
+    secondDimBound := Mux(io.speculativeMode, speculativeSecondDimBound,
+      cfgPayload.secondDim.resize(18))
+
+    val (cnt, cntOvf) = util.LoopsCntGen.wireOvf(List(cfgPayload.firstDim, secondDimBound), enInc)
     val cntOvfReduce = cntOvf.reduce(_ & _)
 
     val flag = Bool().setAsReg().init(False)
     val notReadyFlag =  Bool().setAsReg().init(False)
-    val inCnt = UInt(log2Up(maxFirstDim) bits).setAsReg().init(0)
-    val inCntOvf = inCnt === cfgPayload.firstDim
+    val inCnt = UInt((if (activationDepth <= 1) 1 else log2Up(activationDepth)) bits).setAsReg().init(0)
+    val firstDimCount = cfgPayload.firstDim.resize(inCnt.getWidth) + U(1, inCnt.getWidth bits)
+    val speculativeLoadBound = (firstDimCount * kSafe.resize(inCnt.getWidth) - U(1, (inCnt.getWidth + 3) bits)).resize(inCnt.getWidth)
+    val inCntOvf = inCnt === Mux(io.speculativeMode, speculativeLoadBound, cfgPayload.firstDim.resize(inCnt.getWidth))
     inCnt.addAttribute("max_fanout", 100)
     cnt.head.addAttribute("max_fanout", 100)
 
@@ -97,7 +120,12 @@ class MulEngine(
     }
 
     val popPre = Event
-    popPre.valid := Mux(flag, True, cnt.head < inCnt)
+    // Legacy GEMV overlaps RAM fill and compute.  A speculative tile must
+    // not start the output loop after only token 0 is present: its read base
+    // moves to token banks that are still being written.  Hold the output
+    // loop until the complete K*B tile has raised flag, while preserving the
+    // original overlap and timing in GEMV mode.
+    popPre.valid := Mux(io.speculativeMode, flag, Mux(flag, True, cnt.head < inCnt))
     ram.wrPort.valid := io.dotIn.fire
     ram.wrPort.address := inCnt
     ram.wrPort.data := io.dotIn.payload
@@ -106,16 +134,30 @@ class MulEngine(
     dotOut.arbitrationFrom(popPre.m2sPipe())
     dotOut.payload := ram.rdPort.rsp
     ram.rdPort.cmd.valid := popPre.ready
-    ram.rdPort.cmd.payload := cnt.head.resized
+    val tokenIndexWidth = if (speculativeMaxK <= 1) 1 else log2Up(speculativeMaxK)
+    val tokenIndex = UInt(tokenIndexWidth bits).setAsReg().init(0)
+    val tokenBase = UInt(inCnt.getWidth bits)
+    tokenBase := 0
+    when(io.speculativeMode) {
+      tokenBase := (tokenIndex.resize(inCnt.getWidth) * firstDimCount).resize(inCnt.getWidth)
+    }
+    ram.rdPort.cmd.payload := (tokenBase + cnt.head.resize(inCnt.getWidth)).resize(log2Up(activationDepth))
 
     val enIncPipe = Bool()
-    val (cntPipe, cntOvfPipe) = util.LoopsCntGen.wireOvf(List(cfgPayload.firstDim, cfgPayload.secondDim), enIncPipe)
+    val (cntPipe, cntOvfPipe) = util.LoopsCntGen.wireOvf(List(cfgPayload.firstDim, secondDimBound), enIncPipe)
     val cntOvfReducePipe = cntOvfPipe.reduce(_ & _)
     enIncPipe := dotOut.fire
     val clrCondPipe = enIncPipe & cntOvfReducePipe
 
     val incCond = popPre.fire
     val clrCond = incCond & cntOvfReduce
+    when(incCond && io.speculativeMode && cntOvf.head) {
+      when(kSafe === 1 || tokenIndex === (kSafe - 1).resize(tokenIndexWidth)) {
+        tokenIndex.clearAll()
+      } otherwise {
+        tokenIndex := tokenIndex + 1
+      }
+    }
     flag.clearWhen(clrCond)
     notReadyFlag.clearWhen(clrCondPipe)
     cfg.ready := clrCondPipe

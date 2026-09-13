@@ -200,7 +200,7 @@ class AttnSubMod(
   p4Completion.io.softmaxQuery := p4Controller.io.softmax.query
   p4Completion.io.softmaxOutputValid := softmax.io.output.valid && status.speculativeEnable
   p4Completion.io.softmaxOutputLast := softmax.io.output.last
-  p4Completion.io.vAxpyTileOut.payload := io.p4.vAxpyTileOut.payload
+  p4Completion.io.vAxpyTileOut.fragment := io.p4.vAxpyTileOut.fragment
   p4Completion.io.vAxpyTileOut.last := io.p4.vAxpyTileOut.last
   p4Completion.io.vAxpyTileOut.valid := io.p4.vAxpyTileOut.valid && status.speculativeEnable
 

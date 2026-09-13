@@ -49,6 +49,10 @@ class AddEngineNew(
     val vecOut = master(Flow(util.AxiFrame(Bits(parallelBit bits), userBit = 6)))
     val scalarOut = master(Flow(Fragment(util.AxiFrame(Bits(serialBit bits), userBit = 6))))
     val cfg = slave(Stream(Config()))
+    // Descriptor-scoped speculative controls. The cfg stream remains the
+    // legacy 32-bit ABI; these controls select the wider internal dot bound.
+    val speculativeMode = in Bool()
+    val speculativeK = in UInt(3 bits)
     val postCfgTag = out Bits (6 bits)
   }
 
@@ -205,8 +209,18 @@ class AddEngineNew(
     val enMulResCnt = Bool().setAsReg().init(False)
     enMulResCnt := enMulResCntNext
 
+    val kSafe = UInt(3 bits)
+    kSafe := io.speculativeK
+    when(io.speculativeK === 0)(kSafe := 1)
+    val secondDimCount = cfgPayloadNext.secondDim.resize(18) + U(1, 18 bits)
+    val speculativeSecondDimBound =
+      (secondDimCount * kSafe.resize(18) - U(1, 21 bits)).resize(18)
+    val secondDimBound = UInt(18 bits)
+    secondDimBound := Mux(io.speculativeMode, speculativeSecondDimBound,
+      cfgPayloadNext.secondDim.resize(18))
+
     val (muResCnt, mulResCntOvf, mulResCntOvfReduce) = CascadeCnt(
-      (cfgPayloadNext.firstDim, cfgPayloadNext.secondDim), enMulResCnt
+      (cfgPayloadNext.firstDim, secondDimBound), enMulResCnt
     )
 
     val enAddOutCnt = Delay(enMulResCnt, reduceLatency, init = False)
