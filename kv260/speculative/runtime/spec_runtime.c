@@ -147,6 +147,21 @@ spec_step_result_t spec_runtime_step(spec_runtime_t *runtime)
                 runtime->config.read32(runtime->config.mmio_context,
                                        SPEC_REG_TARGET0 + 4u * i);
         }
+        runtime->metrics.hardware_weight_bytes +=
+            runtime->config.read32(runtime->config.mmio_context,
+                                   SPEC_REG_PERF_WEIGHT_BYTES);
+        runtime->metrics.hardware_kv_read_bytes +=
+            runtime->config.read32(runtime->config.mmio_context,
+                                   SPEC_REG_PERF_KV_READ_BYTES);
+        runtime->metrics.hardware_kv_write_bytes +=
+            runtime->config.read32(runtime->config.mmio_context,
+                                   SPEC_REG_PERF_KV_WRITE_BYTES);
+        runtime->metrics.hardware_verify_cycles +=
+            runtime->config.read32(runtime->config.mmio_context,
+                                   SPEC_REG_PERF_VERIFY_CYCLES);
+        runtime->metrics.hardware_memory_stall_cycles +=
+            runtime->config.read32(runtime->config.mmio_context,
+                                   SPEC_REG_PERF_MEMORY_STALL_CYCLES);
         runtime->state = SPEC_STATE_ACCEPT_OR_REJECT;
         return SPEC_STEP_PROGRESS;
 

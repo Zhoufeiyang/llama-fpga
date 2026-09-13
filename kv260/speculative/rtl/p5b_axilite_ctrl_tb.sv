@@ -9,15 +9,16 @@ module p5b_axilite_ctrl_tb;
   wire io_tokenIndex_valid;wire[15:0]io_tokenIndex_tdata;wire[5:0]io_tokenIndex_tuser;wire[1:0]io_cmdSel;
   wire[4:0]io_presetLayer;wire[9:0]io_presetToken;wire io_speculativeEnable;wire[1:0]io_speculativeQuery;
   wire[9:0]io_speculativeCommitted;logic[15:0]status_tokenCnt;logic[7:0]status_layerCnt;
-  logic status_argMaxVld;logic[15:0]status_argMaxIndex;logic status_prefill;wire resetOut;
+  logic status_argMaxVld;logic[15:0]status_argMaxIndex;logic status_prefill;wire io_perfWindowActive,io_perfWindowClear;wire resetOut;
   wire io_speculativeBatch_valid;logic io_speculativeBatch_ready;
   wire io_speculativeBatch_payload_mode;wire[2:0]io_speculativeBatch_payload_k;
   wire[5:0]io_speculativeBatch_payload_projectionTag;wire[7:0]io_speculativeBatch_payload_layerId;
   wire[15:0]io_speculativeBatch_payload_rows,io_speculativeBatch_payload_beatsPerRow;
   logic status_projectionDone,status_projectionError;
   logic[63:0]status_perfWeightBytes,status_perfKvReadBytes,status_perfKvWriteBytes,status_perfVerifyCycles,status_perfMemoryStallCycles;
-  integer errors;logic[31:0]rd;
+  integer errors,clearPulses;logic[31:0]rd;
   AxiLiteCtrl dut(.*);
+  always @(posedge clk) if(!reset&&io_perfWindowClear) clearPulses=clearPulses+1;
 
   task axil_write(input[31:0]addr,input[31:0]data);
     begin
@@ -36,7 +37,7 @@ module p5b_axilite_ctrl_tb;
     end
   endtask
   initial begin
-    errors=0;io_ctrl_aw_valid=0;io_ctrl_w_valid=0;io_ctrl_b_ready=1;io_ctrl_ar_valid=0;io_ctrl_r_ready=1;
+    errors=0;clearPulses=0;io_ctrl_aw_valid=0;io_ctrl_w_valid=0;io_ctrl_b_ready=1;io_ctrl_ar_valid=0;io_ctrl_r_ready=1;
     io_ctrl_aw_payload_prot=0;io_ctrl_ar_payload_prot=0;status_tokenCnt=0;status_layerCnt=0;
     status_argMaxVld=0;status_argMaxIndex=0;status_prefill=0;
     io_speculativeBatch_ready=1;status_projectionDone=0;status_projectionError=0;
@@ -44,18 +45,19 @@ module p5b_axilite_ctrl_tb;
     repeat(5)@(posedge clk);reset=0;
     axil_write(32'h108,100);axil_write(32'h104,4);axil_write(32'h100,1);repeat(3)@(posedge clk);
     axil_read(32'h10c,rd);if(rd[9:0]!=100)errors=errors+1;
-    axil_read(32'h130,rd);if(!rd[1]||rd[25:16]!=104||io_speculativeCommitted!=100)errors=errors+1;
+    axil_read(32'h130,rd);if(!rd[1]||rd[25:16]!=104||io_speculativeCommitted!=100||!io_perfWindowActive)errors=errors+1;
     axil_write(32'h120,32'h00000102);repeat(3)@(posedge clk);
     axil_read(32'h108,rd);if(rd[9:0]!=102||io_speculativeCommitted!=102)errors=errors+1;
-    axil_read(32'h130,rd);if(!rd[0]||rd[1]||rd[25:16]!=102)errors=errors+1;
+    axil_read(32'h130,rd);if(!rd[0]||rd[1]||rd[25:16]!=102||io_perfWindowActive)errors=errors+1;
     $display("P5B_COMMIT base=100 accepted=2 committed=%0d",io_speculativeCommitted);
+    axil_write(32'h154,1);repeat(2)@(posedge clk);
     axil_write(32'h100,1);repeat(3)@(posedge clk);axil_write(32'h124,1);repeat(3)@(posedge clk);
     axil_read(32'h108,rd);if(rd[9:0]!=102)errors=errors+1;
     axil_read(32'h130,rd);if(!rd[0]||rd[1]||rd[25:16]!=102)errors=errors+1;
     $display("P5B_ROLLBACK committed=%0d",io_speculativeCommitted);
     axil_write(32'h104,0);axil_write(32'h100,1);repeat(3)@(posedge clk);axil_read(32'h130,rd);
-    if(!rd[2]||rd[1])errors=errors+1;
+    if(!rd[2]||rd[1]||clearPulses!=2)errors=errors+1;
     if(errors)$fatal(1,"P5-B AXI-Lite control failed with %0d errors",errors);
-    $display("P5B_AXILITE_POINTER_CONTROL_GO REGISTERS=1 COMMIT=1 ROLLBACK=1 FAULT=1");$finish;
+    $display("P5B_AXILITE_POINTER_CONTROL_GO REGISTERS=1 COMMIT=1 ROLLBACK=1 FAULT=1 PERF_WINDOW=1 CLEAR_PULSES=%0d",clearPulses);$finish;
   end
 endmodule

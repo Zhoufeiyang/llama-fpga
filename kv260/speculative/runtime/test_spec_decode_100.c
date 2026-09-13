@@ -7,7 +7,7 @@
 #define TEST_TOKENS 100u
 
 typedef struct {
-    uint32_t regs[0x160u / 4u];
+    uint32_t regs[0x194u / 4u];
     uint16_t emitted[TEST_TOKENS + SPEC_TARGET_MAX];
     unsigned emitted_count;
     int inject_timeout;

@@ -34,6 +34,12 @@ rollback, result polling, and output backpressure. Use
 `spec_runtime_get_metrics()` for board logging and
 `spec_runtime_reset_metrics()` at a measurement boundary.
 
+The same metrics record accumulates the production PL counters sampled after
+each complete `K+1` target-result block: target-weight bytes, KV read/write
+bytes, verification-window cycles, and target-memory stall cycles.  These are
+read from `0x180`–`0x190` before result acknowledgement and are kept separate
+from PS software counters.
+
 `draft_model.c` implements a fixed-capacity trigram/lookup draft in the same
 16-bit tokenizer-ID space as the target. It performs no allocation, saturates
 observation counts, uses deterministic token-ID tie breaking, and exposes a

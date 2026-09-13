@@ -15,8 +15,10 @@ Measured quantities are:
 - cycles where the target-weight stream is valid but backpressured.
 
 The low 32 bits are exposed read-only at AXI-Lite offsets `0x180` through
-`0x190`.  Counters clear on descriptor acceptance and stop when the descriptor
-is no longer active.  The underlying implementation is 64 bit to avoid short
+`0x190`.  Counters clear on speculative transaction start and remain active
+until all `K+1` target results have arrived.  The window therefore spans every
+projection and attention phase, rather than being reset for each matrix
+descriptor.  The underlying implementation is 64 bit to avoid short
 measurement overflow.
 
 ## Verification
@@ -36,7 +38,8 @@ the five low-word register mappings while retaining all P3-B descriptor checks:
 P3B_PRODUCTION_DESCRIPTOR_GO HELD_UNTIL_READY=1 MODE=GEMM K=4 PROJECTION=42 LAYER=17 ROWS=4096 BEATS=32 DONE=1 INVALID_FAULT=1 PERF_REGS=5
 ```
 
-The P5-B and P6-B AXI-Lite regressions also pass after the interface extension,
+The P5-B regression additionally checks the transaction-active window and two
+independent start/clear pulses.  P5-B and P6-B both pass after the interface extension,
 and complete-top SpinalHDL elaboration passed before this evidence record was
 created.
 
@@ -51,4 +54,3 @@ claimed by this source-level gate.  Result-output stall counting exists in the
 standalone counter primitive but is not yet connected to a trustworthy
 production result backpressure event, so it is deliberately not exposed as a
 production measurement.
-

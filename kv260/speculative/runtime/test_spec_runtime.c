@@ -4,7 +4,7 @@
 #include <string.h>
 
 typedef struct {
-    uint32_t regs[0x160u / 4u];
+    uint32_t regs[0x194u / 4u];
     uint32_t writes[128][2];
     unsigned write_count;
     uint16_t emitted[16];
@@ -117,6 +117,11 @@ static int check_case(uint8_t k, uint8_t mismatch)
     }
     fake.desired_targets[k] = 200u + k;
     fake.regs[SPEC_REG_STATUS / 4u] = SPEC_STATUS_ACTIVE;
+    fake.regs[SPEC_REG_PERF_WEIGHT_BYTES / 4u] = 4096u;
+    fake.regs[SPEC_REG_PERF_KV_READ_BYTES / 4u] = 2048u;
+    fake.regs[SPEC_REG_PERF_KV_WRITE_BYTES / 4u] = 512u;
+    fake.regs[SPEC_REG_PERF_VERIFY_CYCLES / 4u] = 1000u;
+    fake.regs[SPEC_REG_PERF_MEMORY_STALL_CYCLES / 4u] = 25u;
     fake.stall_once = 1u;
 
     if (run_until_terminal(&runtime, 64u) != 0 ||
@@ -142,7 +147,12 @@ static int check_case(uint8_t k, uint8_t mismatch)
         runtime.metrics.emitted_tokens != expected_accept + 1u ||
         runtime.metrics.all_match_transactions != (mismatch == k ? 1u : 0u) ||
         runtime.metrics.mismatch_transactions != (mismatch < k ? 1u : 0u) ||
-        runtime.metrics.output_backpressure_stalls != 1u) {
+        runtime.metrics.output_backpressure_stalls != 1u ||
+        runtime.metrics.hardware_weight_bytes != 4096u ||
+        runtime.metrics.hardware_kv_read_bytes != 2048u ||
+        runtime.metrics.hardware_kv_write_bytes != 512u ||
+        runtime.metrics.hardware_verify_cycles != 1000u ||
+        runtime.metrics.hardware_memory_stall_cycles != 25u) {
         return 1;
     }
     for (i = 0u; i < expected_accept; ++i) {
@@ -312,6 +322,6 @@ int main(void)
         fprintf(stderr, "P7-A runtime failed with %d errors\n", errors);
         return 1;
     }
-    puts("P7A_PS_RUNTIME_GO K1_TO_K4=1 BACKPRESSURE=1 TIMEOUT_ROLLBACK=1 PL_FAULT_ROLLBACK=1 TARGET_FALLBACK=1 METRICS=1");
+    puts("P7A_PS_RUNTIME_GO K1_TO_K4=1 BACKPRESSURE=1 TIMEOUT_ROLLBACK=1 PL_FAULT_ROLLBACK=1 TARGET_FALLBACK=1 METRICS=1 HW_METRICS=5");
     return 0;
 }

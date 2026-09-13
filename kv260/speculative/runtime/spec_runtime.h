@@ -22,6 +22,11 @@ extern "C" {
 #define SPEC_REG_INITIAL_TARGET 0x138u
 #define SPEC_REG_TARGET0        0x140u
 #define SPEC_REG_RESULT_ACK     0x154u
+#define SPEC_REG_PERF_WEIGHT_BYTES       0x180u
+#define SPEC_REG_PERF_KV_READ_BYTES      0x184u
+#define SPEC_REG_PERF_KV_WRITE_BYTES     0x188u
+#define SPEC_REG_PERF_VERIFY_CYCLES      0x18cu
+#define SPEC_REG_PERF_MEMORY_STALL_CYCLES 0x190u
 
 #define SPEC_STATUS_IDLE  (1u << 0)
 #define SPEC_STATUS_ACTIVE (1u << 1)
@@ -96,6 +101,11 @@ typedef struct {
     uint64_t output_backpressure_stalls;
     uint64_t fallback_invocations;
     uint64_t fallback_tokens;
+    uint64_t hardware_weight_bytes;
+    uint64_t hardware_kv_read_bytes;
+    uint64_t hardware_kv_write_bytes;
+    uint64_t hardware_verify_cycles;
+    uint64_t hardware_memory_stall_cycles;
 } spec_runtime_metrics_t;
 
 typedef struct {
