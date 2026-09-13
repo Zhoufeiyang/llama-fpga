@@ -59,6 +59,8 @@ class GenMemCmdLenAlign(
     val speculativeEnable = in Bool()
     val speculativeQuery = in UInt(2 bits)
     val speculativeCommitted = in UInt(log2Up(maxToken + 1) bits)
+    val speculativeK = in UInt(3 bits)
+    val speculativeEpoch = in UInt(8 bits)
     val speculativeQueryActive = out UInt(2 bits)
     val cmdSel = if (numOfCore == 1 && dmaSplit == 1 || numOfCore == 4) in UInt (2 bits) else null
     val projectionDone = out Bool()
@@ -96,6 +98,7 @@ class GenMemCmdLenAlign(
   val descriptorK = UInt(3 bits).setAsReg().init(1)
   val descriptorProjectionTag = Bits(6 bits).setAsReg().init(0)
   val descriptorLayerId = UInt(8 bits).setAsReg().init(0)
+  val descriptorEpoch = UInt(8 bits).setAsReg().init(0)
   val descriptorRows = UInt(16 bits).setAsReg().init(0)
   val descriptorBeatsPerRow = UInt(16 bits).setAsReg().init(0)
   val descriptorRowCnt = UInt(16 bits).setAsReg().init(0)
@@ -122,6 +125,7 @@ class GenMemCmdLenAlign(
       descriptorK := io.speculativeBatch.payload.k
       descriptorProjectionTag := io.speculativeBatch.payload.projectionTag
       descriptorLayerId := io.speculativeBatch.payload.layerId
+      descriptorEpoch := status.speculativeEpoch
       // rows x beatsPerRow is the physical target-weight stream and must not
       // grow with K. K is consumed by the shared verification datapath.
       descriptorRows := io.speculativeBatch.payload.rows

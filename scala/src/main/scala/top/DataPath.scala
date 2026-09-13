@@ -194,8 +194,12 @@ class DataPath(
   val tokenIndex = slave(Stream(util.AxiFrame(Bits(16 bits), userBit = 6)))
   val speculativeBatch = slave(Stream(util.SpeculativeBatchDescriptor()))
   val speculativeEnable = in Bool()
+  val speculativeActive = in Bool()
   val speculativeQuery = in UInt(2 bits)
   val speculativeCommitted = in UInt(log2Up(maxToken + 1) bits)
+  val speculativeBase = in UInt(log2Up(maxToken + 1) bits)
+  val speculativeK = in UInt(3 bits)
+  val speculativeEpoch = in UInt(8 bits)
   val perfWindowActive = in Bool()
   val perfWindowClear = in Bool()
 
@@ -531,8 +535,10 @@ class DataPath(
     fp32Acc_latency = fp32Acc_latency
   )
 
-  engine.io.speculativeMode := speculativeBatchEnabled
-  engine.io.speculativeK := speculativeBatchK
+  // Runtime transactions select GEMM mode even when descriptors are produced
+  // by the on-chip production scheduler instead of the debug AXI-Lite port.
+  engine.io.speculativeMode := speculativeActive || speculativeBatchEnabled
+  engine.io.speculativeK := Mux(speculativeActive, speculativeK, speculativeBatchK)
 
   val node = new AllGatherSubModNew(
     id = id,
@@ -628,9 +634,11 @@ class DataPath(
   cmdGen.local.kvBus.data := szPacker.io.kvBus.fragment
   cmdGen.local.kvBus.dest.clearAll()
   cmdGen.status.enPredictor := stateGen.status.enPredictor
-  cmdGen.status.speculativeEnable := speculativeEnable
+  cmdGen.status.speculativeEnable := speculativeActive
   cmdGen.status.speculativeQuery := speculativeQuery
-  cmdGen.status.speculativeCommitted := speculativeCommitted
+  cmdGen.status.speculativeCommitted := speculativeBase
+  cmdGen.status.speculativeK := speculativeK
+  cmdGen.status.speculativeEpoch := speculativeEpoch
   cmdGen.status.perfWindowActive := perfWindowActive
   cmdGen.status.perfWindowClear := perfWindowClear
   cmdGen.status.perfKvReadBeat := axi.int.bus.fire &&
@@ -652,9 +660,9 @@ class DataPath(
   // from io
 
   attn.io.dotOut << engine.io.scalarOut
-  attn.status.speculativeEnable := speculativeEnable
+  attn.status.speculativeEnable := speculativeActive
   attn.status.speculativeQuery := cmdGen.status.speculativeQueryActive
-  attn.status.speculativeCommitted := speculativeCommitted
+  attn.status.speculativeCommitted := speculativeBase
 
   //  exp.io.inputs(0) << attn.exp.to
   //  exp.io.outputs(0) >> attn.exp.from
@@ -748,8 +756,8 @@ class DataPath(
   szPacker.io.tokenIndexFlow.valid := tokenIndexPipe.fire
   szPacker.io.tokenIndexFlow.payload := tokenKind
   szPacker.io.tokenPosition := Mux(
-    speculativeEnable,
-    (speculativeCommitted + cmdGen.status.speculativeQueryActive.resized).resized,
+    speculativeActive,
+    (speculativeBase + cmdGen.status.speculativeQueryActive.resized).resized,
     stateGen.status.token
   ).resized
 

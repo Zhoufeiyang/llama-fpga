@@ -108,6 +108,8 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P5 production transaction-completion gating: IN PROGRESS`
 
+`P5-F transaction-active/address-freeze sub-gate: GO`
+
 `P6 software acceptance/result-buffer source: GO`
 
 `P6 refreshed production RTL/board sub-gate: IN PROGRESS`
@@ -349,6 +351,13 @@ line-ending candidates can be replayed at positions 15 and 31 while all fifteen
 committed neighbours remain bit-identical. Together with P5-A through P5-D,
 this closes the P5 pointer-commit gate. See
 `evidence/p5e-retained-metadata-line-20260912.md`.
+
+P5-F separates feature enable from an active speculative transaction and
+freezes base, K, and epoch at START. Production KV addressing now uses the
+frozen base only inside that epoch; commit is accepted only after all K+1
+target results are present, while rollback prevents late results from entering
+a later transaction. Focused AXI-Lite xsim and complete-top elaboration pass.
+See `evidence/p5f-production-transaction-epoch-20260913.md`.
 
 ## P6 implementation status
 

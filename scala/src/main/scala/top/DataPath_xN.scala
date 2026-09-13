@@ -205,8 +205,12 @@ class DataPath_xN(
 
   for (i <- 0 until numOfCore) {
     coreArea(i).core.speculativeEnable := cfg.io.speculativeEnable
+    coreArea(i).core.speculativeActive := cfg.io.speculativeActive
     coreArea(i).core.speculativeQuery := cfg.io.speculativeQuery
     coreArea(i).core.speculativeCommitted := cfg.io.speculativeCommitted.resized
+    coreArea(i).core.speculativeBase := cfg.io.speculativeBase.resized
+    coreArea(i).core.speculativeK := cfg.io.speculativeK
+    coreArea(i).core.speculativeEpoch := cfg.io.speculativeEpoch
     coreArea(i).core.perfWindowActive := cfg.io.perfWindowActive
     coreArea(i).core.perfWindowClear := cfg.io.perfWindowClear
     // The descriptor is broadcast to every command generator.  A launch is
@@ -230,8 +234,12 @@ class DataPath_xN(
     coreArea(i).core.toAxiLite.perfVerifyCycles.addTag(crossClockDomain)
     coreArea(i).core.toAxiLite.perfMemoryStallCycles.addTag(crossClockDomain)
     coreArea(i).core.speculativeEnable.addTag(crossClockDomain)
+    coreArea(i).core.speculativeActive.addTag(crossClockDomain)
     coreArea(i).core.speculativeQuery.addTag(crossClockDomain)
     coreArea(i).core.speculativeCommitted.addTag(crossClockDomain)
+    coreArea(i).core.speculativeBase.addTag(crossClockDomain)
+    coreArea(i).core.speculativeK.addTag(crossClockDomain)
+    coreArea(i).core.speculativeEpoch.addTag(crossClockDomain)
     coreArea(i).core.perfWindowActive.addTag(crossClockDomain)
     coreArea(i).core.perfWindowClear.addTag(crossClockDomain)
     if (sync) {

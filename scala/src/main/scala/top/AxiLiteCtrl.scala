@@ -18,10 +18,14 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
     val presetLayer = out Bits(5 bits)
     val presetToken = out Bits(10 bits)
     val speculativeEnable = out Bool()
+    val speculativeActive = out Bool()
     val speculativeQuery = out UInt(2 bits)
     // Committed length spans 0..1024 inclusive; physical positions remain
     // 0..1023 and are checked before any candidate launch.
     val speculativeCommitted = out UInt(11 bits)
+    val speculativeBase = out UInt(11 bits)
+    val speculativeK = out UInt(3 bits)
+    val speculativeEpoch = out UInt(8 bits)
     val perfWindowActive = out Bool()
     val perfWindowClear = out Bool()
     // Production speculative batch descriptor.  It is held until the
@@ -79,6 +83,7 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
   val speculativeFault = Bool().setAsReg().init(False)
   val speculativeBase = UInt(11 bits).setAsReg().init(0)
   val speculativePointer = UInt(11 bits).setAsReg().init(0)
+  val speculativeEpoch = UInt(8 bits).setAsReg().init(0)
   val candidateIds = Vec.fill(4)(Bits(16 bits).setAsReg().init(0))
   val initialTargetId = Bits(16 bits).setAsReg().init(0)
   val targetIds = Vec.fill(5)(Bits(16 bits).setAsReg().init(0))
@@ -197,6 +202,7 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
     when(speculativeStartValid) {
       speculativeBase := speculativeCommitted
       speculativePointer := speculativeEnd.resized
+      speculativeEpoch := speculativeEpoch + 1
       speculativeActive.set()
       speculativeFault.clear()
       // g[0] exists before the drafted candidates are launched. Seed it
@@ -208,7 +214,10 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
     }
   }
   when(speculativeCommit) {
-    when(speculativeActive && speculativeCommitDelta <= speculativeBatchK) {
+    // A pointer may become visible only after the complete g[0..K] result
+    // block proves that every candidate reached the target-pass terminal.
+    when(speculativeActive && resultCount === (speculativeBatchK + 1).resized &&
+      speculativeCommitDelta <= speculativeBatchK) {
       speculativeCommitted := speculativeBase + speculativeCommitDelta.resized
       speculativePointer := speculativeBase + speculativeCommitDelta.resized
       speculativeActive.clear()
@@ -217,8 +226,12 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
     }
   }
   when(speculativeRollback) {
-    speculativePointer := speculativeCommitted
-    speculativeActive.clear()
+    when(speculativeActive) {
+      speculativePointer := speculativeCommitted
+      speculativeActive.clear()
+    } otherwise {
+      speculativeFault.set()
+    }
   }
   when(resultAck && !speculativeActive) {
     resultCount.clearAll()
@@ -230,6 +243,8 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
   speculativeStatus(0) := !speculativeActive
   speculativeStatus(1) := speculativeActive
   speculativeStatus(2) := speculativeFault
+  speculativeStatus(3) := speculativeActive &&
+    resultCount === (speculativeBatchK + 1).resized
   speculativeStatus(26 downto 16) := speculativePointer.asBits
   ctrl.read(speculativeStatus, 0x130, 0)
 
@@ -342,8 +357,12 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
   io.presetLayer := 0
   io.presetToken := 0
   io.speculativeEnable := speculativeEnable
+  io.speculativeActive := speculativeActive
   io.speculativeQuery := speculativeQuery
   io.speculativeCommitted := speculativeCommitted
+  io.speculativeBase := speculativeBase
+  io.speculativeK := speculativeBatchK
+  io.speculativeEpoch := speculativeEpoch
   io.perfWindowActive := speculativeActive &&
     resultCount < (speculativeBatchK + 1).resized
   io.perfWindowClear := speculativeStart && speculativeStartValid
