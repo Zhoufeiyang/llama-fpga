@@ -133,3 +133,11 @@ the start of an epoch. Elaborate
 ```powershell
 & .\kv260\speculative\rtl\run_p3c_batch_collector_xsim.ps1
 ```
+
+The production descriptor grant and automatic 32-layer sequence are checked
+with:
+
+```powershell
+& .\kv260\speculative\rtl\run_p3d_projection_command_gate_xsim.ps1
+& .\kv260\speculative\rtl\run_p3e_axilite_auto_sequence_xsim.ps1
+```

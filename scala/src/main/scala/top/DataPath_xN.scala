@@ -228,6 +228,10 @@ class DataPath_xN(
     coreArea(i).core.speculativeBatch.payload.beatsPerRow.addTag(crossClockDomain)
     coreArea(i).core.toAxiLite.projectionDone.addTag(crossClockDomain)
     coreArea(i).core.toAxiLite.projectionError.addTag(crossClockDomain)
+    coreArea(i).core.toAxiLite.projectionDoneTag.addTag(crossClockDomain)
+    coreArea(i).core.toAxiLite.projectionDoneLayer.addTag(crossClockDomain)
+    coreArea(i).core.toAxiLite.attentionDone.addTag(crossClockDomain)
+    coreArea(i).core.toAxiLite.mlpActivationDone.addTag(crossClockDomain)
     coreArea(i).core.toAxiLite.perfWeightBytes.addTag(crossClockDomain)
     coreArea(i).core.toAxiLite.perfKvReadBytes.addTag(crossClockDomain)
     coreArea(i).core.toAxiLite.perfKvWriteBytes.addTag(crossClockDomain)
@@ -283,6 +287,10 @@ class DataPath_xN(
   cfg.status.layerCnt := coreArea(if (numOfCore == 4) 1 else 0).core.toAxiLite.layerCnt
   cfg.status.projectionDone := coreArea(if (numOfCore == 4) 1 else 0).core.toAxiLite.projectionDone
   cfg.status.projectionError := coreArea(if (numOfCore == 4) 1 else 0).core.toAxiLite.projectionError
+  cfg.status.projectionDoneTag := coreArea(if (numOfCore == 4) 1 else 0).core.toAxiLite.projectionDoneTag
+  cfg.status.projectionDoneLayer := coreArea(if (numOfCore == 4) 1 else 0).core.toAxiLite.projectionDoneLayer
+  cfg.status.attentionDone := coreArea(if (numOfCore == 4) 1 else 0).core.toAxiLite.attentionDone
+  cfg.status.mlpActivationDone := coreArea(if (numOfCore == 4) 1 else 0).core.toAxiLite.mlpActivationDone
   cfg.status.perfWeightBytes := coreArea(if (numOfCore == 4) 1 else 0).core.toAxiLite.perfWeightBytes
   cfg.status.perfKvReadBytes := coreArea(if (numOfCore == 4) 1 else 0).core.toAxiLite.perfKvReadBytes
   cfg.status.perfKvWriteBytes := coreArea(if (numOfCore == 4) 1 else 0).core.toAxiLite.perfKvWriteBytes

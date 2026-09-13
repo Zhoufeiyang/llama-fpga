@@ -183,6 +183,10 @@ class DataPath(
     val layerCnt = out Bits (8 bits)
     val projectionDone = out Bool()
     val projectionError = out Bool()
+    val projectionDoneTag = out Bits(6 bits)
+    val projectionDoneLayer = out UInt(8 bits)
+    val attentionDone = out Bool()
+    val mlpActivationDone = out Bool()
     val descriptorActive = out Bool()
     val perfWeightBytes = out UInt(64 bits)
     val perfKvReadBytes = out UInt(64 bits)
@@ -628,6 +632,27 @@ class DataPath(
     vTensorTag = vTensorTag
   )
 
+  // Count the real V-weighted attention output fragments. In speculative
+  // mode the shared AXPY engine emits K complete vectors; only their terminal
+  // may release the sequencer's V-to-O barrier.
+  val speculativeAttentionCountWidth = log2Up(dim / bankLen / numOfCore * 4)
+  val speculativeAttentionCount = UInt(speculativeAttentionCountWidth bits).setAsReg().init(0)
+  val speculativeAttentionHit = engine.io.vecOut.valid &&
+    engine.io.vecOut.tuser === B(engine2VecOutTag.head, 6 bits)
+  val speculativeAttentionLast = speculativeAttentionCount ===
+    (speculativeK.resize(speculativeAttentionCountWidth) *
+      U(dim / bankLen / numOfCore, speculativeAttentionCountWidth bits) - 1).resized
+  val speculativeAttentionDone = speculativeAttentionHit && speculativeActive && speculativeAttentionLast
+  when(!speculativeActive) {
+    speculativeAttentionCount.clearAll()
+  } elsewhen(speculativeAttentionHit) {
+    when(speculativeAttentionLast) {
+      speculativeAttentionCount.clearAll()
+    } otherwise {
+      speculativeAttentionCount := speculativeAttentionCount + 1
+    }
+  }
+
   //  stateGen.status.layerCnt.addAttribute("mark_debug","true")
   //  stateGen.status.token.addAttribute("mark_debug", "true")
   //  axi.int.bus.tuser.addAttribute("mark_debug", "true")
@@ -799,6 +824,10 @@ class DataPath(
   toAxiLite.layerCnt := stateGen.status.layerCnt.asBits.resized
   toAxiLite.projectionDone := stateGen.status.projectionDone
   toAxiLite.projectionError := stateGen.status.projectionError
+  toAxiLite.projectionDoneTag := cmdGen.status.projectionDoneTag
+  toAxiLite.projectionDoneLayer := cmdGen.status.projectionDoneLayer
+  toAxiLite.attentionDone := speculativeAttentionDone
+  toAxiLite.mlpActivationDone := sOut.mlpActivationDone && speculativeActive
   toAxiLite.descriptorActive := cmdGen.status.descriptorActive
   toAxiLite.perfWeightBytes := cmdGen.status.perfWeightBytes
   toAxiLite.perfKvReadBytes := cmdGen.status.perfKvReadBytes

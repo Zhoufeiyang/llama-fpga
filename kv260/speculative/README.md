@@ -66,7 +66,9 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P3-C K-row embedding-command collection sub-gate: GO`
 
-`P3 production projection sequencing: IN PROGRESS`
+`P3 production projection sequencing/control: GO`
+
+`P3 downstream batched-result consumption: IN PROGRESS`
 
 `P4 causal KV tile scheduler sub-gate: GO`
 
@@ -276,6 +278,14 @@ Focused xsim covers K=1..4, epoch replacement, abort, and invalid K; the full
 top source elaborates. Projection-segment grants and downstream batched-result
 consumption remain open. See
 `evidence/p3c-production-batch-command-collector-20260913.md`.
+
+P3-D/E connects the on-chip projection sequencer to validated transaction
+START, real tagged weight completions, and production attention/MLP barrier
+events. A descriptor-tag gate now stalls each real MM2S weight segment until
+the matching Q/K/V/O/G/U/D/LM grant is active. K=1..4 all issue 225 projections
+and 51,617,792 packed-weight beats, independent of K. Downstream consumption
+of the resulting K-lane row-major streams remains open. See
+`evidence/p3de-production-auto-sequence-and-grant-20260913.md`.
 
 ## P4 implementation status
 

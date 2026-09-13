@@ -60,6 +60,7 @@ class SpeculativeProjectionSequencer(
     val attentionDone = in Bool()
     val mlpActivationRequest = out Bool()
     val mlpActivationDone = in Bool()
+    val abort = in Bool()
     val busy = out Bool()
     val done = out Bool()
     val error = out Bool()
@@ -235,6 +236,17 @@ class SpeculativeProjectionSequencer(
     // done is a one-cycle pulse; a new start can be accepted on the next
     // cycle, while FAULT remains sticky until reset.
     state := idle
+  }
+
+  // Rollback/timeout terminates the descriptor epoch immediately. Any late
+  // completion is ignored in IDLE and cannot retire the next transaction.
+  when(io.abort) {
+    state := idle
+    inflight.clear()
+    errorReg.clear()
+    errorCodeReg.clearAll()
+    launchedReg.clearAll()
+    launchedWeightBeatsReg.clearAll()
   }
 }
 

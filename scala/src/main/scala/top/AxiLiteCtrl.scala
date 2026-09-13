@@ -47,6 +47,10 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
     val prefill = in Bool() addTag (crossClockDomain)
     val projectionDone = in Bool() addTag (crossClockDomain)
     val projectionError = in Bool() addTag (crossClockDomain)
+    val projectionDoneTag = in Bits(6 bits) addTag (crossClockDomain)
+    val projectionDoneLayer = in UInt(8 bits) addTag (crossClockDomain)
+    val attentionDone = in Bool() addTag (crossClockDomain)
+    val mlpActivationDone = in Bool() addTag (crossClockDomain)
     val perfWeightBytes = in UInt(64 bits) addTag (crossClockDomain)
     val perfKvReadBytes = in UInt(64 bits) addTag (crossClockDomain)
     val perfKvWriteBytes = in UInt(64 bits) addTag (crossClockDomain)
@@ -152,13 +156,39 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
   resultAck.clear()
   descriptorLaunch.clear()
 
-  io.speculativeBatch.valid := descriptorPending
-  io.speculativeBatch.payload.mode := descriptorMode
-  io.speculativeBatch.payload.k := descriptorK
-  io.speculativeBatch.payload.projectionTag := descriptorProjectionTag
-  io.speculativeBatch.payload.layerId := descriptorLayerId
-  io.speculativeBatch.payload.rows := descriptorRows
-  io.speculativeBatch.payload.beatsPerRow := descriptorBeatsPerRow
+  // The production sequencer is launched atomically with the transaction.
+  // The legacy AXI-Lite descriptor registers remain as a debug path whenever
+  // no automatic sequence is active.
+  val projectionSequencer = new SpeculativeProjectionSequencer()
+  val automaticSequenceStart = Bool()
+  projectionSequencer.io.start.valid := automaticSequenceStart
+  projectionSequencer.io.start.payload.mode := True
+  projectionSequencer.io.start.payload.k := speculativeBatchK
+  projectionSequencer.io.start.payload.projectionTag.clearAll()
+  projectionSequencer.io.start.payload.layerId.clearAll()
+  projectionSequencer.io.start.payload.rows := 1
+  projectionSequencer.io.start.payload.beatsPerRow := 1
+  projectionSequencer.io.projectionDone.valid := status.projectionDone
+  projectionSequencer.io.projectionDone.payload.projectionTag := status.projectionDoneTag
+  projectionSequencer.io.projectionDone.payload.layerId := status.projectionDoneLayer
+  projectionSequencer.io.attentionDone := status.attentionDone
+  projectionSequencer.io.mlpActivationDone := status.mlpActivationDone
+  val automaticSequenceAbort = Bool()
+  projectionSequencer.io.abort := automaticSequenceAbort
+
+  val automaticDescriptor = projectionSequencer.io.projection
+  val useAutomaticDescriptor = projectionSequencer.io.busy || automaticDescriptor.valid
+  io.speculativeBatch.valid := Mux(useAutomaticDescriptor, automaticDescriptor.valid, descriptorPending)
+  io.speculativeBatch.payload.mode := Mux(useAutomaticDescriptor, automaticDescriptor.payload.mode, descriptorMode)
+  io.speculativeBatch.payload.k := Mux(useAutomaticDescriptor, automaticDescriptor.payload.k, descriptorK)
+  io.speculativeBatch.payload.projectionTag := Mux(useAutomaticDescriptor,
+    automaticDescriptor.payload.projectionTag, descriptorProjectionTag)
+  io.speculativeBatch.payload.layerId := Mux(useAutomaticDescriptor,
+    automaticDescriptor.payload.layerId, descriptorLayerId)
+  io.speculativeBatch.payload.rows := Mux(useAutomaticDescriptor, automaticDescriptor.payload.rows, descriptorRows)
+  io.speculativeBatch.payload.beatsPerRow := Mux(useAutomaticDescriptor,
+    automaticDescriptor.payload.beatsPerRow, descriptorBeatsPerRow)
+  automaticDescriptor.ready := io.speculativeBatch.ready && useAutomaticDescriptor
 
   val descriptorShapeValid = descriptorK >= 1 && descriptorK <= 4 &&
     descriptorRows =/= 0 && descriptorBeatsPerRow =/= 0 &&
@@ -176,8 +206,11 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
       descriptorFault.set()
     }
   }
-  when(io.speculativeBatch.fire) {
+  when(io.speculativeBatch.fire && !useAutomaticDescriptor) {
     descriptorPending.clear()
+  }
+  when(projectionSequencer.io.error) {
+    speculativeFault.set()
   }
   projectionDoneSeen.setWhen(status.projectionDone)
   projectionErrorSeen.setWhen(status.projectionError)
@@ -197,7 +230,14 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
 
   val speculativeEnd = speculativeCommitted.resize(12) + speculativeBatchK.resize(12)
   val speculativeStartValid = !speculativeActive && resultCount === 0 &&
-    speculativeBatchK >= 1 && speculativeBatchK <= 4 && speculativeEnd <= 1024
+    speculativeBatchK >= 1 && speculativeBatchK <= 4 && speculativeEnd <= 1024 &&
+    projectionSequencer.io.start.ready
+  automaticSequenceStart := speculativeStart && speculativeStartValid
+  val speculativeCommitValid = speculativeActive &&
+    resultCount === (speculativeBatchK + 1).resized &&
+    speculativeCommitDelta <= speculativeBatchK
+  automaticSequenceAbort := speculativeRollback ||
+    (speculativeCommit && speculativeCommitValid)
   when(speculativeStart) {
     when(speculativeStartValid) {
       speculativeBase := speculativeCommitted
@@ -216,8 +256,7 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
   when(speculativeCommit) {
     // A pointer may become visible only after the complete g[0..K] result
     // block proves that every candidate reached the target-pass terminal.
-    when(speculativeActive && resultCount === (speculativeBatchK + 1).resized &&
-      speculativeCommitDelta <= speculativeBatchK) {
+    when(speculativeCommitValid) {
       speculativeCommitted := speculativeBase + speculativeCommitDelta.resized
       speculativePointer := speculativeBase + speculativeCommitDelta.resized
       speculativeActive.clear()

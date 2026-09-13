@@ -59,6 +59,10 @@ class ScalarOutSubMod(
   val scalarFifo = new URAM16x16384Fifo()
 
   val status = ug.status.toIo()
+  // Terminal of the real G/U elementwise activation stream. The speculative
+  // projection sequencer uses this event as its U-to-D barrier.
+  val mlpActivationDone = out Bool()
+  mlpActivationDone := ug.io.ugOut.valid && ug.io.ugOut.last
   val silu = ug.silu.toIo()
 
   //  filter.io.input(0) << io.p2sOut

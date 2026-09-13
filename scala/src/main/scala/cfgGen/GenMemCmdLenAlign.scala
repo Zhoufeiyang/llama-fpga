@@ -687,7 +687,37 @@ class GenMemCmdLenAlign(
   mm2sCmdMux.io.inputs(5) << mlpWithPredict.cmd
   mm2sCmdMux.io.inputs(6) << mlpDense.cmd
   mm2sCmdMux.io.inputs(7) << logits.cmd
-  val mm2sCmdMuxOut = mm2sCmdMux.io.output
+  // Shared outer segment selector. It is declared before command gating so
+  // the selected tag is a real hardware signal rather than a Scala forward
+  // reference.
+  val select = UInt(3 bits).setAsReg().init(0)
+  val selectNext = UInt(3 bits)
+  val mm2sCmdMuxRaw = mm2sCmdMux.io.output
+
+  // Identify the command at the head of the selected legacy segment before
+  // it is allowed to handshake. Weight segments require the matching
+  // production descriptor; auxiliary LN/KV/token commands remain free to
+  // make progress between projections and barriers.
+  val selectedCommandTag = Bits(6 bits)
+  switch(select) {
+    is(0) { selectedCommandTag := speculativeTokenContext.io.routeTag }
+    is(1) { selectedCommandTag := B(param.ATTN_LN_SCALE, 6 bits) }
+    is(2) { selectedCommandTag := attnKV.tag.payload }
+    is(3) { selectedCommandTag := attnQKVNoSz.tag.payload }
+    is(4) { selectedCommandTag := attnQKVWithSz.tag.payload }
+    is(5) { selectedCommandTag := mlpWithPredict.tag.payload }
+    is(6) { selectedCommandTag := mlpDense.tag.payload }
+    is(7) { selectedCommandTag := logits.tag.payload }
+  }
+  val projectionCommandGate = new SpeculativeProjectionCommandGate(
+    Seq(param.ATTN_W_Q, param.ATTN_W_K, param.ATTN_W_V, param.ATTN_W_O,
+      param.MLP_W_G, param.MLP_W_U, param.MLP_W_D, param.LM_HEAD_W)
+  )
+  projectionCommandGate.io.speculativeActive := status.speculativeEnable
+  projectionCommandGate.io.descriptorActive := descriptorActive
+  projectionCommandGate.io.descriptorTag := descriptorProjectionTag
+  projectionCommandGate.io.commandTag := selectedCommandTag
+  val mm2sCmdMuxOut = mm2sCmdMuxRaw.continueWhen(projectionCommandGate.io.allow)
 
   val busTagMux = new StreamMux(Bits(6 bits), 8)
   busTagMux.io.inputs(0) << tokenTag
@@ -768,8 +798,6 @@ class GenMemCmdLenAlign(
     token := token + 1
   }
 
-  val select = UInt(3 bits).setAsReg().init(0)
-  val selectNext = UInt(3 bits)
   // Speculative verification loads all K embedding rows before any target
   // layer weight command is allowed to advance. This converts the legacy
   // token-major entry boundary into one K-row activation tile while leaving

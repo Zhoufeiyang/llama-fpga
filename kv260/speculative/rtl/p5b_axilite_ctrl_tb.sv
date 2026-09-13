@@ -18,6 +18,8 @@ module p5b_axilite_ctrl_tb;
   wire[5:0]io_speculativeBatch_payload_projectionTag;wire[7:0]io_speculativeBatch_payload_layerId;
   wire[15:0]io_speculativeBatch_payload_rows,io_speculativeBatch_payload_beatsPerRow;
   logic status_projectionDone,status_projectionError;
+  logic[5:0]status_projectionDoneTag;logic[7:0]status_projectionDoneLayer;
+  logic status_attentionDone,status_mlpActivationDone;
   logic[63:0]status_perfWeightBytes,status_perfKvReadBytes,status_perfKvWriteBytes,status_perfVerifyCycles,status_perfMemoryStallCycles;
   integer errors,clearPulses,i,tokenSeen;logic[31:0]rd;
   AxiLiteCtrl dut(.*);
@@ -50,6 +52,7 @@ module p5b_axilite_ctrl_tb;
     io_ctrl_aw_payload_prot=0;io_ctrl_ar_payload_prot=0;status_tokenCnt=0;status_layerCnt=0;
     status_argMaxVld=0;status_argMaxIndex=0;status_prefill=0;
     io_speculativeBatch_ready=1;status_projectionDone=0;status_projectionError=0;
+    status_projectionDoneTag=0;status_projectionDoneLayer=0;status_attentionDone=0;status_mlpActivationDone=0;
     status_perfWeightBytes=0;status_perfKvReadBytes=0;status_perfKvWriteBytes=0;status_perfVerifyCycles=0;status_perfMemoryStallCycles=0;
     repeat(5)@(posedge clk);reset=0;
     // Exercise the AXI-Lite candidate window through the integrated ingress.

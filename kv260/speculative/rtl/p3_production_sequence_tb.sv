@@ -20,6 +20,7 @@ module p3_production_sequence_tb;
   logic [7:0] io_projectionDone_layerId;
   wire io_attentionRequest; logic io_attentionDone;
   wire io_mlpActivationRequest; logic io_mlpActivationDone;
+  logic io_abort;
   wire io_busy, io_done, io_error; wire [3:0] io_errorCode;
   wire [31:0] io_launchedProjections;
   wire [31:0] io_launchedWeightBeats;
@@ -43,6 +44,7 @@ module p3_production_sequence_tb;
     .projectionDone_payload_layerId(io_projectionDone_layerId),
     .attentionRequest(io_attentionRequest), .attentionDone(io_attentionDone),
     .mlpActivationRequest(io_mlpActivationRequest), .mlpActivationDone(io_mlpActivationDone),
+    .abort(io_abort),
     .busy(io_busy), .done(io_done), .error(io_error), .errorCode(io_errorCode),
     .launchedProjections(io_launchedProjections), .launchedWeightBeats(io_launchedWeightBeats),
     .sequenceK(io_sequenceK), .sequenceLayer(io_sequenceLayer),
@@ -52,7 +54,7 @@ module p3_production_sequence_tb;
     begin
       reset=1; io_start_valid=0; io_projection_ready=0;
       io_projectionDone_valid=0; io_projectionDone_projectionTag=0;
-      io_projectionDone_layerId=0; io_attentionDone=0; io_mlpActivationDone=0;
+      io_projectionDone_layerId=0; io_attentionDone=0; io_mlpActivationDone=0; io_abort=0;
       repeat(4) @(posedge clk); reset=0; repeat(2) @(posedge clk);
     end
   endtask
