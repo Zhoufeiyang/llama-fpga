@@ -11,7 +11,7 @@ module p4_attention_phase_controller_spinal_tb;
   logic [2:0] start_k;
   logic [12:0] start_committedTokens;
   logic tile_valid, tile_ready;
-  logic tile_phase, tile_source, tile_buffer;
+  logic tile_phase, tile_source, tile_fetch, tile_buffer;
   logic [1:0] tile_query;
   logic [12:0] tile_startToken, tile_tokenCount;
   logic tile_last;
@@ -28,7 +28,7 @@ module p4_attention_phase_controller_spinal_tb;
   logic [1:0] queryDone_payload;
   logic busy, done, error;
   logic [3:0] errorCode;
-  integer qk_tiles, v_tiles, softmaxes, queries, timeout;
+  integer qk_tiles, v_tiles, qk_ddr_reads, v_ddr_reads, softmaxes, queries, timeout;
 
   always #5 clk = ~clk;
 
@@ -38,6 +38,7 @@ module p4_attention_phase_controller_spinal_tb;
     .io_start_payload_committedTokens(start_committedTokens),
     .io_tile_valid(tile_valid), .io_tile_ready(tile_ready),
     .io_tile_payload_phase(tile_phase), .io_tile_payload_source(tile_source),
+    .io_tile_payload_fetch(tile_fetch),
     .io_tile_payload_buffer(tile_buffer), .io_tile_payload_query(tile_query),
     .io_tile_payload_startToken(tile_startToken),
     .io_tile_payload_tokenCount(tile_tokenCount), .io_tile_payload_last(tile_last),
@@ -66,6 +67,10 @@ module p4_attention_phase_controller_spinal_tb;
       tileDone_query <= tile_query;
       tileDone_startToken <= tile_startToken;
       if(tile_phase) v_tiles <= v_tiles + 1; else qk_tiles <= qk_tiles + 1;
+      if(!tile_source && tile_fetch) begin
+        if(tile_phase) v_ddr_reads <= v_ddr_reads + 1;
+        else qk_ddr_reads <= qk_ddr_reads + 1;
+      end
     end
     if(auto_complete && softmax_valid && softmax_ready) begin
       softmaxDone_valid <= 1;
@@ -79,13 +84,19 @@ module p4_attention_phase_controller_spinal_tb;
 
   task run_case(input integer kval);
     begin
-      qk_tiles=0; v_tiles=0; softmaxes=0; queries=0; timeout=0;
+      qk_tiles=0; v_tiles=0; qk_ddr_reads=0; v_ddr_reads=0;
+      softmaxes=0; queries=0; timeout=0;
       @(posedge clk); start_k=kval; start_committedTokens=130; start_valid=1;
       @(posedge clk); start_valid=0;
       while(!done && !error && timeout < 10000) begin @(posedge clk); timeout=timeout+1; end
-      if(error || timeout >= 10000) $fatal(1, "P4 Spinal case fault K=%0d code=%0d", kval, errorCode);
+      if(error || timeout >= 10000)
+        $fatal(1, "P4 Spinal case fault K=%0d code=%0d busy=%0d qk=%0d v=%0d sm=%0d q=%0d tile_v=%0d sm_v=%0d",
+          kval, errorCode, busy, qk_tiles, v_tiles, softmaxes, queries, tile_valid, softmax_valid);
       if(qk_tiles != 4*kval || v_tiles != 4*kval || softmaxes != kval || queries != kval)
         $fatal(1, "P4 Spinal count mismatch K=%0d qk=%0d v=%0d sm=%0d q=%0d", kval, qk_tiles, v_tiles, softmaxes, queries);
+      if(qk_ddr_reads != 3 || v_ddr_reads != 3)
+        $fatal(1, "P4 DDR tile reuse failed K=%0d qk_reads=%0d v_reads=%0d", kval, qk_ddr_reads, v_ddr_reads);
+      $display("P4B_TILE_REUSE_K%0d qk_ops=%0d v_ops=%0d qk_ddr=%0d v_ddr=%0d", kval, qk_tiles, v_tiles, qk_ddr_reads, v_ddr_reads);
       @(posedge clk);
     end
   endtask
@@ -93,7 +104,8 @@ module p4_attention_phase_controller_spinal_tb;
   initial begin
     start_valid=0; start_k=0; start_committedTokens=0; tile_ready=1; softmax_ready=1;
     tileDone_valid=0; softmaxDone_valid=0; completionError=0;
-    qk_tiles=0; v_tiles=0; softmaxes=0; queries=0;auto_complete=1;
+    qk_tiles=0; v_tiles=0; qk_ddr_reads=0; v_ddr_reads=0;
+    softmaxes=0; queries=0;auto_complete=1;
     repeat(3) @(posedge clk); reset=0;
     run_case(1); run_case(2); run_case(3); run_case(4);
     // Wrong buffer identity must be rejected by the real metadata checker.
@@ -106,7 +118,7 @@ module p4_attention_phase_controller_spinal_tb;
     tileDone_query=tile_query; tileDone_startToken=tile_startToken;
     @(posedge clk); #1; tileDone_valid=0;
     if(!error || errorCode != 3) $fatal(1, "wrong buffer was not rejected");
-    $display("P4_SPINAL_CONTROLLER_GO K1_TO_K4=1 BUFFER_FAULT=1");
+    $display("P4_SPINAL_CONTROLLER_GO K1_TO_K4=1 DDR_TILE_READS_K_INDEPENDENT=1 BUFFER_FAULT=1");
     $finish;
   end
 endmodule

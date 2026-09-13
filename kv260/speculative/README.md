@@ -72,6 +72,8 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P4-B attention-phase-controller sub-gate: GO`
 
+`P4-B K-independent historical-tile fetch schedule sub-gate: GO`
+
 `P4-C production-attention source-integration sub-gate: GO`
 
 `P4-C generated-RTL sub-gate: GO`
@@ -267,12 +269,17 @@ then exposes tentative candidates `[0..q]`; ping/pong buffer identity and
 response metadata are checked before advancing.
 
 P4-B adds a batch attention phase controller that sequences the existing QK,
-stable-softmax, and V-accumulation interfaces per query while preserving the
-same causal tiled range in both sweeps. Its NumPy oracle proves tiled/dense
-equivalence for K=1..4, future-candidate isolation, INT8 dequantization, and
-tentative-only startup. See
+stable-softmax, and V-accumulation interfaces with the committed tile as the
+outer loop. Each historical DDR tile is fetched for query 0 and replayed from
+the selected ping/pong buffer for the remaining queries; the tentative tail
+remains query-dependent. Its NumPy oracle proves tiled/dense equivalence for
+K=1..4, future-candidate isolation, INT8 dequantization, and tentative-only
+startup. Focused RTL simulation with a 130-token prefix observes three DDR
+fetches per phase for every K=1..4. Physical requester integration remains
+open. See
 `evidence/p4-causal-kv-tiles-20260911.md` and
-`evidence/p4b-attention-phase-controller-20260911.md`.
+`evidence/p4b-attention-phase-controller-20260911.md`, plus
+`evidence/p4f-k-independent-tile-reuse-20260913.md`.
 
 P4-C begins the production hookup. AXI-Lite register `0x28` now propagates
 speculative enable, committed length, and query index through `DataPath_xN`

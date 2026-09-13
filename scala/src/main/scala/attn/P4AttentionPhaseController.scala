@@ -21,6 +21,10 @@ case class P4AttentionStart(maxContext: Int, maxK: Int = 4) extends Bundle {
 case class P4AttentionTile(maxContext: Int) extends Bundle {
   val phase = Bool()       // false: QK, true: V weighted accumulation
   val source = Bool()      // false: committed DDR, true: tentative buffer
+  // A committed tile is fetched once for query 0, then replayed from the
+  // selected ping/pong buffer for queries 1..K-1. Tentative tails have
+  // query-dependent lengths and are fetched for every query.
+  val fetch = Bool()
   val buffer = Bool()      // ping/pong tile buffer identity
   val query = UInt(2 bits)
   val startToken = UInt(log2Up(maxContext + 1) bits)
@@ -121,6 +125,7 @@ class P4AttentionPhaseController(
   io.tile.valid := state === issueTile
   io.tile.phase := phaseReg
   io.tile.source := sourceReg
+  io.tile.fetch := sourceReg || queryReg === 0
   io.tile.buffer := bufferReg
   io.tile.query := queryReg
   io.tile.startToken := Mux(sourceReg, U(0, contextWidth bits), offsetReg)
@@ -191,26 +196,42 @@ class P4AttentionPhaseController(
             state := fault
             errorCodeReg := errTile
           } otherwise {
-            bufferReg := !bufferReg
             when(!inflightSource) {
-              when(committedLast) {
-                sourceReg := True
-                offsetReg.clearAll()
+              // Tile-major schedule: fetch a committed DDR tile for q=0,
+              // then replay that same on-chip buffer for q=1..K-1. Only
+              // after all queries consume it may the ping/pong identity and
+              // DDR offset advance.
+              when(queryReg =/= (kReg - 1)) {
+                queryReg := queryReg + 1
               } otherwise {
-                offsetReg := offsetReg + tileTokens
+                queryReg.clearAll()
+                bufferReg := !bufferReg
+                when(committedLast) {
+                  sourceReg := True
+                  offsetReg.clearAll()
+                } otherwise {
+                  offsetReg := offsetReg + tileTokens
+                }
               }
               state := issueTile
             } otherwise {
               when(!inflightPhase) {
-                state := issueSoftmax
+                when(queryReg === (kReg - 1)) {
+                  queryReg.clearAll()
+                  state := issueSoftmax
+                } otherwise {
+                  queryReg := queryReg + 1
+                  state := issueTile
+                }
               } otherwise {
                 when(queryReg === (kReg - 1)) {
                   state := complete
                 } otherwise {
+                  // The committed V tiles for every query were already
+                  // consumed by the tile-major walk. Advance only through
+                  // the query-dependent tentative tails; do not restart QK.
                   queryReg := queryReg + 1
-                  phaseReg.clear()
-                  offsetReg.clearAll()
-                  sourceReg := committedReg === 0
+                  sourceReg := True
                   state := issueTile
                 }
               }
@@ -229,10 +250,20 @@ class P4AttentionPhaseController(
             state := fault
             errorCodeReg := errSoftmax
           } otherwise {
-            phaseReg := True
-            offsetReg.clearAll()
-            sourceReg := committedReg === 0
-            state := issueTile
+            when(queryReg === (kReg - 1)) {
+              // All K probability rows are complete. Rewind the shared tile
+              // walk for V and preserve the K independent accumulators in
+              // the arithmetic adapter.
+              phaseReg := True
+              queryReg.clearAll()
+              offsetReg.clearAll()
+              sourceReg := committedReg === 0
+              bufferReg.clearAll()
+              state := issueTile
+            } otherwise {
+              queryReg := queryReg + 1
+              state := issueSoftmax
+            }
           }
         }
       }
