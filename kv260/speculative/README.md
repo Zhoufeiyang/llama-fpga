@@ -104,7 +104,9 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P5-E retained metadata-line sub-gate: GO`
 
-`P5: GO`
+`P5 source-level address/metadata sub-gates: GO`
+
+`P5 production transaction-completion gating: IN PROGRESS`
 
 `P6 software acceptance/result-buffer source: GO`
 
@@ -145,6 +147,8 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 `P7-G board performance-measurement sub-gate: IN PROGRESS`
 
 `P7-H PS hardware-metrics binding sub-gate: GO`
+
+`P7-I single-start batched candidate ingress sub-gate: GO`
 
 `P7 real quantized draft sub-gate: IN PROGRESS`
 
@@ -291,7 +295,8 @@ and softmax-to-V-AXPY connections. Vendor-IP softmax simulation passes finite,
 causal-length, and normalization checks for K=1..4. Production QK and focused V
 weighted-accumulation simulations use the actual Xilinx FP16 multiplier and
 accumulator models and pass for K=1..4, including bit-exact K=1 behavior. These
-results close P4 without rerunning full implementation. See
+results close the arithmetic and source-elaboration sub-gates; the physical
+KV requester and V-AXPY terminal handshake remain open. See
 `evidence/p4c-production-attention-hookup-20260911.md` and
 `evidence/p4a-vendor-qk-v-20260912.md`.
 
@@ -431,3 +436,10 @@ accumulates them into 64-bit PS runtime totals before acknowledging the result
 buffer. Host K=1..4 tests check exact values, the 100-token equivalence suite
 still passes, and the A53 freestanding ELF rebuild succeeds. See
 `evidence/p7h-runtime-hardware-metrics-20260912.md`.
+
+P7-I removes the sequential PS candidate-launch loop. Software now enables the
+speculative window and pulses START once after writing K candidate IDs; the PL
+snapshots and emits the ordered block with q metadata held across each active
+token transaction. The 1024-token endpoint is represented without truncation,
+and the final physical slots 1020 through 1023 pass focused tests. See
+`evidence/p7i-batched-launch-binding-20260913.md`.

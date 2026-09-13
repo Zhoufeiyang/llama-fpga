@@ -58,7 +58,8 @@ class GenMemCmdLenAlign(
     val enPredictor = in Bool()
     val speculativeEnable = in Bool()
     val speculativeQuery = in UInt(2 bits)
-    val speculativeCommitted = in UInt(log2Up(maxToken) bits)
+    val speculativeCommitted = in UInt(log2Up(maxToken + 1) bits)
+    val speculativeQueryActive = out UInt(2 bits)
     val cmdSel = if (numOfCore == 1 && dmaSplit == 1 || numOfCore == 4) in UInt (2 bits) else null
     val projectionDone = out Bool()
     val projectionError = out Bool()
@@ -81,6 +82,15 @@ class GenMemCmdLenAlign(
   import LLaMA2_7B._
 
   val token = UInt(log2Up(maxToken) bits).setAsReg().init(0)
+  // Candidate position travels beside the unchanged six-bit parameter-tag
+  // network. It is captured only when this command generator accepts the
+  // corresponding token, so it stays stable for the complete transformer
+  // pass even if further candidates are already buffered upstream.
+  val speculativeTokenContext = new top.SpeculativeTokenContext
+  speculativeTokenContext.io.accepted := io.tokenIndex.fire
+  speculativeTokenContext.io.speculativeEnable := status.speculativeEnable
+  speculativeTokenContext.io.tokenUser := io.tokenIndex.tuser
+  val activeSpeculativeQuery = speculativeTokenContext.io.activeQuery
   val descriptorActive = Bool().setAsReg().init(False)
   val descriptorMode = Bool().setAsReg().init(False)
   val descriptorK = UInt(3 bits).setAsReg().init(1)
@@ -101,6 +111,10 @@ class GenMemCmdLenAlign(
     // K is consumed by the shared GEMM datapath and must not make a valid
     // LM-head matrix (32000 rows at K=4) fail this physical-shape check.
     io.speculativeBatch.payload.rows <= 65535
+  // Completion is a one-cycle event. AXI-Lite owns a separate sticky
+  // projectionDoneSeen bit; keeping this level high here could make a
+  // transformer sequencer consume the previous projection twice.
+  projectionDone.clear()
   when(io.speculativeBatch.fire) {
     when(descriptorShapeValid) {
       descriptorActive.set()
@@ -114,7 +128,6 @@ class GenMemCmdLenAlign(
       descriptorBeatsPerRow := io.speculativeBatch.payload.beatsPerRow
       descriptorRowCnt.clearAll()
       descriptorBeatCnt.clearAll()
-      projectionDone.clear()
       projectionError.clear()
     } otherwise {
       projectionError.set()
@@ -126,7 +139,8 @@ class GenMemCmdLenAlign(
   kvReadPosition.io.legacyPosition := token
   kvReadPosition.io.speculativeEnable := status.speculativeEnable
   kvReadPosition.io.committedPosition := status.speculativeCommitted
-  kvReadPosition.io.candidatePosition := status.speculativeQuery
+  kvReadPosition.io.candidatePosition := Mux(status.speculativeEnable,
+    activeSpeculativeQuery, status.speculativeQuery)
   val kvReadToken = kvReadPosition.io.selectedPosition
   val tokenHigh = token.dropLow(log2Up(busWidth / 32)).asUInt
   val tokenLow = token.takeLow(log2Up(busWidth / 32))
@@ -203,7 +217,9 @@ class GenMemCmdLenAlign(
 
   val tokenTag = Stream(Bits(6 bits))
   tokenTag.valid := tokenIn.fire
-  tokenTag.payload := io.tokenIndex.tuser
+  // High bits carry speculative q only on ingress and must never enter the
+  // existing parameter-tag routing network.
+  tokenTag.payload := speculativeTokenContext.io.routeTag
 
   val attnLn = Stream(Fragment(Bits(72 bits)))
   attnLn.valid.set()
@@ -819,7 +835,8 @@ class GenMemCmdLenAlign(
     kvWritePosition.io.legacyPosition := s2mmTokenCnt
     kvWritePosition.io.speculativeEnable := status.speculativeEnable
     kvWritePosition.io.committedPosition := status.speculativeCommitted
-    kvWritePosition.io.candidatePosition := status.speculativeQuery
+    kvWritePosition.io.candidatePosition := Mux(status.speculativeEnable,
+      speculativeTokenContext.io.acceptedQuery, status.speculativeQuery)
     // Capture the physical KV slot with the launch. This keeps the address
     // stable even if PS changes q immediately after enqueueing the next job.
     val tokenEnFifo = new StreamFifo(UInt(log2Up(maxToken) bits), 64, forFMax = true)
@@ -875,7 +892,7 @@ class GenMemCmdLenAlign(
     // counter. Continuously mirroring committed state also makes fallback to
     // target-only mode resume at the accepted pointer.
     when(status.speculativeEnable) {
-      s2mmTokenCnt := status.speculativeCommitted
+      s2mmTokenCnt := status.speculativeCommitted.resized
     }
 
     // Keep the physical write counter frozen while a production descriptor
@@ -947,6 +964,7 @@ class GenMemCmdLenAlign(
   status.projectionDoneTag := descriptorProjectionTag
   status.projectionDoneLayer := descriptorLayerId
   status.descriptorActive := descriptorActive
+  status.speculativeQueryActive := activeSpeculativeQuery
   status.perfWeightBytes := perfCounters.io.weightBytes
   status.perfKvReadBytes := perfCounters.io.kvReadBytes
   status.perfKvWriteBytes := perfCounters.io.kvWriteBytes

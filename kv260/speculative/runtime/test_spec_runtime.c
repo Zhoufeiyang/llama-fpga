@@ -128,6 +128,7 @@ static int check_case(uint8_t k, uint8_t mismatch)
         runtime.state != SPEC_STATE_COMPLETE ||
         runtime.accepted_count != expected_accept ||
         runtime.committed_length != 100u + expected_accept ||
+        fake.regs[SPEC_REG_ATTENTION / 4u] != 0u ||
         fake.emitted_count != expected_accept + 1u ||
         fake.regs[SPEC_REG_COMMITTED / 4u] != 100u ||
         fake.regs[SPEC_REG_BATCH_K / 4u] != k ||
@@ -193,7 +194,8 @@ static int check_invalid_descriptors(void)
     }
     return spec_runtime_begin(&runtime, 0u, 1u, 2u, 0u) == -1 &&
            spec_runtime_begin(&runtime, 0u, 1u, 2u, 5u) == -1 &&
-           spec_runtime_begin(&runtime, 1021u, 1u, 2u, 4u) == -1 ? 0 : 1;
+           spec_runtime_begin(&runtime, 1021u, 1u, 2u, 4u) == -1 &&
+           spec_runtime_begin(&runtime, 1020u, 1u, 2u, 4u) == 0 ? 0 : 1;
 }
 
 static int check_timeout(void)

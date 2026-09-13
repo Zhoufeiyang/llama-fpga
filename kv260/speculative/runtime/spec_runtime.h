@@ -10,7 +10,9 @@ extern "C" {
 
 #define SPEC_KMAX 4u
 #define SPEC_TARGET_MAX (SPEC_KMAX + 1u)
+#define SPEC_MAX_CONTEXT 1024u
 
+#define SPEC_REG_ATTENTION      0x028u
 #define SPEC_REG_START          0x100u
 #define SPEC_REG_BATCH_K        0x104u
 #define SPEC_REG_COMMITTED      0x108u
@@ -31,6 +33,8 @@ extern "C" {
 #define SPEC_STATUS_IDLE  (1u << 0)
 #define SPEC_STATUS_ACTIVE (1u << 1)
 #define SPEC_STATUS_FAULT (1u << 2)
+#define SPEC_ATTENTION_ENABLE (1u << 0)
+#define SPEC_ATTENTION_COMMITTED_SHIFT 16u
 
 typedef uint32_t (*spec_mmio_read32_fn)(void *context, uint32_t offset);
 typedef void (*spec_mmio_write32_fn)(void *context, uint32_t offset,

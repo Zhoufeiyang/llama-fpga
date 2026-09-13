@@ -110,3 +110,18 @@ target-result retention with:
 ```powershell
 & .\kv260\speculative\rtl\run_p6b_axilite_xsim.ps1
 ```
+
+The AXI-Lite candidate IDs can also be replayed as an ordered, backpressurable
+token Stream.  Elaborate `top.SpeculativeTokenIngressTest`, then run:
+
+```powershell
+& .\kv260\speculative\rtl\run_speculative_token_ingress_xsim.ps1
+```
+
+Candidate q is removed from the legacy routing tag and retained across the
+complete active token transaction. Elaborate `top.SpeculativeTokenContextTest`,
+then run:
+
+```powershell
+& .\kv260\speculative\rtl\run_speculative_token_context_xsim.ps1
+```

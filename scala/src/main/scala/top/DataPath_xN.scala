@@ -181,6 +181,12 @@ class DataPath_xN(
     )
   }
 
+  // Broadcast one speculative sequence to every core.  StreamFork waits for
+  // all branches, preserving token alignment even when one core is stalled;
+  // each branch then crosses into its core clock domain when required.
+  val speculativeTokenFork = new StreamFork(cfg.io.speculativeTokenIndex.payloadType, numOfCore)
+  speculativeTokenFork.io.input << cfg.io.speculativeTokenIndex
+
   val m_axi = for (i <- 0 until numOfCore) yield {
     if (DMA_SPLIT(i) == 1) coreArea(i).core.m_axi.toIo() else null
   }
@@ -229,11 +235,23 @@ class DataPath_xN(
     coreArea(i).core.perfWindowActive.addTag(crossClockDomain)
     coreArea(i).core.perfWindowClear.addTag(crossClockDomain)
     if (sync) {
-      coreArea(i).core.tokenIndex << cfg.io.tokenIndex.m2sPipe.m2sPipe.toStream
+      val legacyToken = cfg.io.tokenIndex.m2sPipe.m2sPipe.toStream.queue(size = 2, forFMax = true)
+      val speculativeToken = speculativeTokenFork.io.outputs(i)
+      coreArea(i).core.tokenIndex.valid := speculativeToken.valid || legacyToken.valid
+      coreArea(i).core.tokenIndex.tdata := Mux(speculativeToken.valid, speculativeToken.tdata, legacyToken.tdata)
+      coreArea(i).core.tokenIndex.tuser := Mux(speculativeToken.valid, speculativeToken.tuser, legacyToken.tuser)
+      speculativeToken.ready := coreArea(i).core.tokenIndex.ready && speculativeToken.valid
+      legacyToken.ready := coreArea(i).core.tokenIndex.ready && !speculativeToken.valid
       coreArea(i).core.tokenIndex.addTag(crossClockDomain)
     }
     else {
-      coreArea(i).core.tokenIndex << cfg.io.tokenIndex.toStream.queue(size = 32, pushClock = clockDomain, popClock = coreArea(i).clockDomain)
+      val legacyToken = cfg.io.tokenIndex.toStream.queue(size = 32, pushClock = clockDomain, popClock = coreArea(i).clockDomain)
+      val speculativeToken = speculativeTokenFork.io.outputs(i).queue(size = 8, pushClock = clockDomain, popClock = coreArea(i).clockDomain)
+      coreArea(i).core.tokenIndex.valid := speculativeToken.valid || legacyToken.valid
+      coreArea(i).core.tokenIndex.tdata := Mux(speculativeToken.valid, speculativeToken.tdata, legacyToken.tdata)
+      coreArea(i).core.tokenIndex.tuser := Mux(speculativeToken.valid, speculativeToken.tuser, legacyToken.tuser)
+      speculativeToken.ready := coreArea(i).core.tokenIndex.ready && speculativeToken.valid
+      legacyToken.ready := coreArea(i).core.tokenIndex.ready && !speculativeToken.valid
     }
 
     if (sync)

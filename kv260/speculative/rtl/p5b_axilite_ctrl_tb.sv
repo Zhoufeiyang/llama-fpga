@@ -7,8 +7,9 @@ module p5b_axilite_ctrl_tb;
   logic io_ctrl_ar_valid;wire io_ctrl_ar_ready;logic[31:0]io_ctrl_ar_payload_addr;logic[2:0]io_ctrl_ar_payload_prot;
   wire io_ctrl_r_valid;logic io_ctrl_r_ready;wire[31:0]io_ctrl_r_payload_data;wire[1:0]io_ctrl_r_payload_resp;
   wire io_tokenIndex_valid;wire[15:0]io_tokenIndex_tdata;wire[5:0]io_tokenIndex_tuser;wire[1:0]io_cmdSel;
+  wire io_speculativeTokenIndex_valid;wire[15:0]io_speculativeTokenIndex_tdata;wire[5:0]io_speculativeTokenIndex_tuser;logic io_speculativeTokenIndex_ready;
   wire[4:0]io_presetLayer;wire[9:0]io_presetToken;wire io_speculativeEnable;wire[1:0]io_speculativeQuery;
-  wire[9:0]io_speculativeCommitted;logic[15:0]status_tokenCnt;logic[7:0]status_layerCnt;
+  wire[10:0]io_speculativeCommitted;logic[15:0]status_tokenCnt;logic[7:0]status_layerCnt;
   logic status_argMaxVld;logic[15:0]status_argMaxIndex;logic status_prefill;wire io_perfWindowActive,io_perfWindowClear;wire resetOut;
   wire io_speculativeBatch_valid;logic io_speculativeBatch_ready;
   wire io_speculativeBatch_payload_mode;wire[2:0]io_speculativeBatch_payload_k;
@@ -16,7 +17,7 @@ module p5b_axilite_ctrl_tb;
   wire[15:0]io_speculativeBatch_payload_rows,io_speculativeBatch_payload_beatsPerRow;
   logic status_projectionDone,status_projectionError;
   logic[63:0]status_perfWeightBytes,status_perfKvReadBytes,status_perfKvWriteBytes,status_perfVerifyCycles,status_perfMemoryStallCycles;
-  integer errors,clearPulses;logic[31:0]rd;
+  integer errors,clearPulses,i,tokenSeen;logic[31:0]rd;
   AxiLiteCtrl dut(.*);
   always @(posedge clk) if(!reset&&io_perfWindowClear) clearPulses=clearPulses+1;
 
@@ -37,27 +38,55 @@ module p5b_axilite_ctrl_tb;
     end
   endtask
   initial begin
-    errors=0;clearPulses=0;io_ctrl_aw_valid=0;io_ctrl_w_valid=0;io_ctrl_b_ready=1;io_ctrl_ar_valid=0;io_ctrl_r_ready=1;
+    errors=0;clearPulses=0;io_speculativeTokenIndex_ready=1;io_ctrl_aw_valid=0;io_ctrl_w_valid=0;io_ctrl_b_ready=1;io_ctrl_ar_valid=0;io_ctrl_r_ready=1;
     io_ctrl_aw_payload_prot=0;io_ctrl_ar_payload_prot=0;status_tokenCnt=0;status_layerCnt=0;
     status_argMaxVld=0;status_argMaxIndex=0;status_prefill=0;
     io_speculativeBatch_ready=1;status_projectionDone=0;status_projectionError=0;
     status_perfWeightBytes=0;status_perfKvReadBytes=0;status_perfKvWriteBytes=0;status_perfVerifyCycles=0;status_perfMemoryStallCycles=0;
     repeat(5)@(posedge clk);reset=0;
+    // Exercise the AXI-Lite candidate window through the integrated ingress.
+    axil_write(32'h28,1);axil_write(32'h110,16'h1111);axil_write(32'h114,16'h2222);
+    axil_write(32'h118,16'h3333);axil_write(32'h11c,16'h4444);
+    io_speculativeTokenIndex_ready=0;
     axil_write(32'h108,100);axil_write(32'h104,4);axil_write(32'h100,1);repeat(3)@(posedge clk);
-    axil_read(32'h10c,rd);if(rd[9:0]!=100)errors=errors+1;
-    axil_read(32'h130,rd);if(!rd[1]||rd[25:16]!=104||io_speculativeCommitted!=100||!io_perfWindowActive)errors=errors+1;
+    io_speculativeTokenIndex_ready=1;tokenSeen=0;
+    while(tokenSeen<4) begin
+      @(posedge clk);
+      if(io_speculativeTokenIndex_valid&&io_speculativeTokenIndex_ready) begin
+        case(tokenSeen)
+          0: if(io_speculativeTokenIndex_tdata!==16'h1111)errors=errors+1;
+          1: if(io_speculativeTokenIndex_tdata!==16'h2222)errors=errors+1;
+          2: if(io_speculativeTokenIndex_tdata!==16'h3333)errors=errors+1;
+          3: if(io_speculativeTokenIndex_tdata!==16'h4444)errors=errors+1;
+        endcase
+        if(io_speculativeTokenIndex_tuser!==({tokenSeen[1:0],4'h2}))errors=errors+1;
+        tokenSeen=tokenSeen+1;
+      end
+    end
+    repeat(1)@(posedge clk);
+    axil_read(32'h10c,rd);if(rd[10:0]!=100)errors=errors+1;
+    axil_read(32'h130,rd);if(!rd[1]||rd[26:16]!=104||io_speculativeCommitted!=100||!io_perfWindowActive)errors=errors+1;
     axil_write(32'h120,32'h00000102);repeat(3)@(posedge clk);
-    axil_read(32'h108,rd);if(rd[9:0]!=102||io_speculativeCommitted!=102)errors=errors+1;
-    axil_read(32'h130,rd);if(!rd[0]||rd[1]||rd[25:16]!=102||io_perfWindowActive)errors=errors+1;
+    axil_read(32'h108,rd);if(rd[10:0]!=102||io_speculativeCommitted!=102)errors=errors+1;
+    axil_read(32'h130,rd);if(!rd[0]||rd[1]||rd[26:16]!=102||io_perfWindowActive)errors=errors+1;
     $display("P5B_COMMIT base=100 accepted=2 committed=%0d",io_speculativeCommitted);
     axil_write(32'h154,1);repeat(2)@(posedge clk);
     axil_write(32'h100,1);repeat(3)@(posedge clk);axil_write(32'h124,1);repeat(3)@(posedge clk);
-    axil_read(32'h108,rd);if(rd[9:0]!=102)errors=errors+1;
-    axil_read(32'h130,rd);if(!rd[0]||rd[1]||rd[25:16]!=102)errors=errors+1;
+    axil_read(32'h108,rd);if(rd[10:0]!=102)errors=errors+1;
+    axil_read(32'h130,rd);if(!rd[0]||rd[1]||rd[26:16]!=102)errors=errors+1;
     $display("P5B_ROLLBACK committed=%0d",io_speculativeCommitted);
+    // The final four physical slots 1020..1023 are legal and produce the
+    // architected committed length 1024 after an all-accepted resolution.
+    axil_write(32'h154,1);axil_write(32'h108,1020);axil_write(32'h104,4);
+    axil_write(32'h100,1);repeat(3)@(posedge clk);
+    axil_write(32'h120,32'h00000104);repeat(3)@(posedge clk);
+    axil_read(32'h108,rd);if(rd[10:0]!=1024||io_speculativeCommitted!=1024)errors=errors+1;
+    axil_read(32'h130,rd);if(rd[26:16]!=1024)errors=errors+1;
+    $display("P5B_LAST_CONTEXT committed=%0d",io_speculativeCommitted);
+    axil_write(32'h154,1);
     axil_write(32'h104,0);axil_write(32'h100,1);repeat(3)@(posedge clk);axil_read(32'h130,rd);
-    if(!rd[2]||rd[1]||clearPulses!=2)errors=errors+1;
+    if(!rd[2]||rd[1]||clearPulses!=3)errors=errors+1;
     if(errors)$fatal(1,"P5-B AXI-Lite control failed with %0d errors",errors);
-    $display("P5B_AXILITE_POINTER_CONTROL_GO REGISTERS=1 COMMIT=1 ROLLBACK=1 FAULT=1 PERF_WINDOW=1 CLEAR_PULSES=%0d",clearPulses);$finish;
+    $display("P5B_AXILITE_POINTER_CONTROL_GO REGISTERS=1 COMMIT=1 ROLLBACK=1 LAST_CONTEXT_1024=1 FAULT=1 PERF_WINDOW=1 CLEAR_PULSES=%0d",clearPulses);$finish;
   end
 endmodule

@@ -5,6 +5,7 @@
 static void fail_transaction(spec_runtime_t *runtime, spec_error_t error)
 {
     runtime->config.write32(runtime->config.mmio_context, SPEC_REG_ROLLBACK, 1u);
+    runtime->config.write32(runtime->config.mmio_context, SPEC_REG_ATTENTION, 0u);
     runtime->config.write32(runtime->config.mmio_context, SPEC_REG_RESULT_ACK, 1u);
     runtime->error = error;
     ++runtime->metrics.transactions_failed;
@@ -40,8 +41,8 @@ int spec_runtime_begin(spec_runtime_t *runtime, uint16_t committed_length,
                        uint16_t seed_token, uint16_t initial_target, uint8_t k)
 {
     if (runtime == NULL || k == 0u || k > SPEC_KMAX ||
-        committed_length > 1023u ||
-        (uint32_t)committed_length + k > 1023u ||
+        committed_length > SPEC_MAX_CONTEXT ||
+        (uint32_t)committed_length + k > SPEC_MAX_CONTEXT ||
         (runtime->state != SPEC_STATE_IDLE &&
          runtime->state != SPEC_STATE_COMPLETE &&
          runtime->state != SPEC_STATE_ERROR)) {
@@ -112,6 +113,14 @@ spec_step_result_t spec_runtime_step(spec_runtime_t *runtime)
                                     SPEC_REG_CANDIDATE0 + 4u * i,
                                     runtime->candidates[i]);
         }
+        /* Enable the production candidate ingress before START snapshots K
+         * and candidate IDs. Candidate q is carried in the hardware stream,
+         * so software does not rewrite this register between candidates. */
+        runtime->config.write32(runtime->config.mmio_context,
+                                SPEC_REG_ATTENTION,
+                                SPEC_ATTENTION_ENABLE |
+                                ((uint32_t)runtime->committed_length <<
+                                 SPEC_ATTENTION_COMMITTED_SHIFT));
         runtime->config.write32(runtime->config.mmio_context,
                                 SPEC_REG_START, 1u);
         if (runtime->config.launch_verify(
@@ -192,6 +201,8 @@ spec_step_result_t spec_runtime_step(spec_runtime_t *runtime)
     case SPEC_STATE_COMMIT_POINTER:
         runtime->config.write32(runtime->config.mmio_context, SPEC_REG_COMMIT,
                                 0x100u | runtime->accepted_count);
+        runtime->config.write32(runtime->config.mmio_context,
+                                SPEC_REG_ATTENTION, 0u);
         runtime->committed_length = (uint16_t)
             (runtime->committed_length + runtime->accepted_count);
         runtime->state = SPEC_STATE_EMIT_TOKENS;

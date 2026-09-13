@@ -7,8 +7,9 @@ module p6b_axilite_results_tb;
   logic io_ctrl_ar_valid;wire io_ctrl_ar_ready;logic[31:0]io_ctrl_ar_payload_addr;logic[2:0]io_ctrl_ar_payload_prot;
   wire io_ctrl_r_valid;logic io_ctrl_r_ready;wire[31:0]io_ctrl_r_payload_data;wire[1:0]io_ctrl_r_payload_resp;
   wire io_tokenIndex_valid;wire[15:0]io_tokenIndex_tdata;wire[5:0]io_tokenIndex_tuser;wire[1:0]io_cmdSel;
+  wire io_speculativeTokenIndex_valid;wire[15:0]io_speculativeTokenIndex_tdata;wire[5:0]io_speculativeTokenIndex_tuser;logic io_speculativeTokenIndex_ready;
   wire[4:0]io_presetLayer;wire[9:0]io_presetToken;wire io_speculativeEnable;wire[1:0]io_speculativeQuery;
-  wire[9:0]io_speculativeCommitted;logic[15:0]status_tokenCnt;logic[7:0]status_layerCnt;
+  wire[10:0]io_speculativeCommitted;logic[15:0]status_tokenCnt;logic[7:0]status_layerCnt;
   logic status_argMaxVld;logic[15:0]status_argMaxIndex;logic status_prefill;wire io_perfWindowActive,io_perfWindowClear;wire resetOut;
   wire io_speculativeBatch_valid;logic io_speculativeBatch_ready;
   wire io_speculativeBatch_payload_mode;wire[2:0]io_speculativeBatch_payload_k;
@@ -31,7 +32,7 @@ module p6b_axilite_results_tb;
     @(negedge clk);status_argMaxIndex=token;status_argMaxVld=1;@(negedge clk);status_argMaxVld=0;repeat(3)@(posedge clk);
   end endtask
   initial begin
-    errors=0;io_ctrl_aw_valid=0;io_ctrl_w_valid=0;io_ctrl_b_ready=1;io_ctrl_ar_valid=0;io_ctrl_r_ready=1;
+    errors=0;io_speculativeTokenIndex_ready=1;io_ctrl_aw_valid=0;io_ctrl_w_valid=0;io_ctrl_b_ready=1;io_ctrl_ar_valid=0;io_ctrl_r_ready=1;
     io_ctrl_aw_payload_prot=0;io_ctrl_ar_payload_prot=0;status_tokenCnt=0;status_layerCnt=0;status_argMaxVld=0;status_argMaxIndex=0;status_prefill=0;
     io_speculativeBatch_ready=1;status_projectionDone=0;status_projectionError=0;
     status_perfWeightBytes=0;status_perfKvReadBytes=0;status_perfKvWriteBytes=0;status_perfVerifyCycles=0;status_perfMemoryStallCycles=0;

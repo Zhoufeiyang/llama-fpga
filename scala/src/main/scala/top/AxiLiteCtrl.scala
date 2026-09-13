@@ -11,12 +11,17 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
   val io = new Bundle {
     val ctrl = slave(AxiLite4(32, 32))
     val tokenIndex = master(Flow(util.AxiFrame(Bits(16 bits), userBit = 6)))
+    // Independent, backpressurable speculative token path.  The legacy
+    // tokenIndex Flow above remains unchanged for non-speculative traffic.
+    val speculativeTokenIndex = master(Stream(util.AxiFrame(Bits(16 bits), userBit = 6)))
     val cmdSel = out UInt (2 bits)
     val presetLayer = out Bits(5 bits)
     val presetToken = out Bits(10 bits)
     val speculativeEnable = out Bool()
     val speculativeQuery = out UInt(2 bits)
-    val speculativeCommitted = out UInt(10 bits)
+    // Committed length spans 0..1024 inclusive; physical positions remain
+    // 0..1023 and are checked before any candidate launch.
+    val speculativeCommitted = out UInt(11 bits)
     val perfWindowActive = out Bool()
     val perfWindowClear = out Bool()
     // Production speculative batch descriptor.  It is held until the
@@ -64,7 +69,7 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
   val softReset = Bool().setAsReg().init(False)
   val speculativeEnable = Bool().setAsReg().init(False)
   val speculativeQuery = UInt(2 bits).setAsReg().init(0)
-  val speculativeCommitted = UInt(10 bits).setAsReg().init(0)
+  val speculativeCommitted = UInt(11 bits).setAsReg().init(0)
   val speculativeBatchK = UInt(3 bits).setAsReg().init(1)
   val speculativeStart = Bool().setAsReg().init(False)
   val speculativeCommit = Bool().setAsReg().init(False)
@@ -72,8 +77,8 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
   val speculativeRollback = Bool().setAsReg().init(False)
   val speculativeActive = Bool().setAsReg().init(False)
   val speculativeFault = Bool().setAsReg().init(False)
-  val speculativeBase = UInt(10 bits).setAsReg().init(0)
-  val speculativePointer = UInt(10 bits).setAsReg().init(0)
+  val speculativeBase = UInt(11 bits).setAsReg().init(0)
+  val speculativePointer = UInt(11 bits).setAsReg().init(0)
   val candidateIds = Vec.fill(4)(Bits(16 bits).setAsReg().init(0))
   val initialTargetId = Bits(16 bits).setAsReg().init(0)
   val targetIds = Vec.fill(5)(Bits(16 bits).setAsReg().init(0))
@@ -101,7 +106,7 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
   ctrl.write(isDecodeToken, 0x00, 19)
   ctrl.write(cmdSel, 0x24, 0)
   // P4 runtime window. 0x28[0] selects speculative attention,
-  // [3:2] is candidate q (0..3), and [25:16] is the committed KV length.
+  // [3:2] is candidate q (0..3), and [26:16] is the committed KV length.
   ctrl.write(speculativeEnable, 0x28, 0)
   ctrl.write(speculativeQuery, 0x28, 2)
   ctrl.write(speculativeCommitted, 0x28, 16)
@@ -185,9 +190,9 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
   ctrl.read(status.perfVerifyCycles(31 downto 0), 0x18C, 0)
   ctrl.read(status.perfMemoryStallCycles(31 downto 0), 0x190, 0)
 
-  val speculativeEnd = speculativeCommitted.resize(11) + speculativeBatchK.resize(11)
+  val speculativeEnd = speculativeCommitted.resize(12) + speculativeBatchK.resize(12)
   val speculativeStartValid = !speculativeActive && resultCount === 0 &&
-    speculativeBatchK >= 1 && speculativeBatchK <= 4 && speculativeEnd <= 1023
+    speculativeBatchK >= 1 && speculativeBatchK <= 4 && speculativeEnd <= 1024
   when(speculativeStart) {
     when(speculativeStartValid) {
       speculativeBase := speculativeCommitted
@@ -225,8 +230,23 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
   speculativeStatus(0) := !speculativeActive
   speculativeStatus(1) := speculativeActive
   speculativeStatus(2) := speculativeFault
-  speculativeStatus(25 downto 16) := speculativePointer.asBits
+  speculativeStatus(26 downto 16) := speculativePointer.asBits
   ctrl.read(speculativeStatus, 0x130, 0)
+
+  // Candidate IDs are snapshotted only after the existing pointer-control
+  // launch has passed validation.  The ingress owns the sequence state and
+  // may therefore hold valid high while a downstream core applies backpressure.
+  val speculativeTokenIngress = new SpeculativeTokenIngress(maxK = 4)
+  speculativeTokenIngress.io.enable := speculativeEnable
+  speculativeTokenIngress.io.start := speculativeStart && speculativeStartValid
+  speculativeTokenIngress.io.k := speculativeBatchK
+  for (i <- 0 until 4) {
+    speculativeTokenIngress.io.candidateIds(i) := candidateIds(i)
+  }
+  io.speculativeTokenIndex.valid := speculativeTokenIngress.io.tokens.valid
+  io.speculativeTokenIndex.tdata := speculativeTokenIngress.io.tokens.tdata
+  io.speculativeTokenIndex.tuser := speculativeTokenIngress.io.tokens.tuser
+  speculativeTokenIngress.io.tokens.ready := io.speculativeTokenIndex.ready
 
   val resetCycle = 4
   val resetCnt = UInt(log2Up(resetCycle) bits).setAsReg().init(0)

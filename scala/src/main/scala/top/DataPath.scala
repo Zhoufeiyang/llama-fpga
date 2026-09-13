@@ -195,7 +195,7 @@ class DataPath(
   val speculativeBatch = slave(Stream(util.SpeculativeBatchDescriptor()))
   val speculativeEnable = in Bool()
   val speculativeQuery = in UInt(2 bits)
-  val speculativeCommitted = in UInt(log2Up(maxToken) bits)
+  val speculativeCommitted = in UInt(log2Up(maxToken + 1) bits)
   val perfWindowActive = in Bool()
   val perfWindowClear = in Bool()
 
@@ -213,6 +213,7 @@ class DataPath(
     speculativeBatchK := speculativeBatch.payload.k
   }
   val tokenIndexPipe = tokenIndex.toFlow.m2sPipe
+  val tokenKind = tokenIndexPipe.tuser.takeLow(4).resize(6)
 
   //  val attnQKVSplit = in UInt(4 bits) addTag (crossClockDomain)
   //  val attnOSplit = in UInt(4 bits) addTag (crossClockDomain)
@@ -652,7 +653,7 @@ class DataPath(
 
   attn.io.dotOut << engine.io.scalarOut
   attn.status.speculativeEnable := speculativeEnable
-  attn.status.speculativeQuery := speculativeQuery
+  attn.status.speculativeQuery := cmdGen.status.speculativeQueryActive
   attn.status.speculativeCommitted := speculativeCommitted
 
   //  exp.io.inputs(0) << attn.exp.to
@@ -728,7 +729,7 @@ class DataPath(
   stateGen.io.busIn.last := axi.int.bus.last
   stateGen.io.gtCnt << cfgInsert.io.gtCnt
   stateGen.io.tokenIndexFlow.valid := tokenIndexPipe.fire
-  stateGen.io.tokenIndexFlow.payload := tokenIndexPipe.tuser
+  stateGen.io.tokenIndexFlow.payload := tokenKind
   stateGen.io.engineOut.valid := engine.io.vecOut.valid
   stateGen.io.engineOut.payload := engine.io.vecOut.tuser
   stateGen.io.dotOut.valid := engine.io.scalarOut.valid
@@ -745,10 +746,10 @@ class DataPath(
   szPacker.io.vSzOut >> axi.io.vSzOut
   szPacker.io.nextLayer := stateGen.status.nextLayer
   szPacker.io.tokenIndexFlow.valid := tokenIndexPipe.fire
-  szPacker.io.tokenIndexFlow.payload := tokenIndexPipe.tuser
+  szPacker.io.tokenIndexFlow.payload := tokenKind
   szPacker.io.tokenPosition := Mux(
     speculativeEnable,
-    (speculativeCommitted + speculativeQuery.resized).resized,
+    (speculativeCommitted + cmdGen.status.speculativeQueryActive.resized).resized,
     stateGen.status.token
   ).resized
 
@@ -767,7 +768,7 @@ class DataPath(
   ln.status.toLogitsGen := stateGen.status.toLogitsGen
 
   vecOut.status.tokenIndexFlow.valid := tokenIndexPipe.fire
-  vecOut.status.tokenIndexFlow.payload := tokenIndexPipe.tuser
+  vecOut.status.tokenIndexFlow.payload := tokenKind
 
   sOut.status.enPredictor := stateGen.status.enPredictor
   cfgInsert.status.enPredictor := stateGen.status.enPredictor
@@ -775,7 +776,7 @@ class DataPath(
 
   cfgGen.status.enPredictor := stateGen.status.enPredictor
   cfgGen.status.tokenIndexFlow.valid := tokenIndexPipe.fire
-  cfgGen.status.tokenIndexFlow.payload := tokenIndexPipe.tuser
+  cfgGen.status.tokenIndexFlow.payload := tokenKind
 
   toAxiLite.tokenCnt := stateGen.status.token.asBits.resized
   toAxiLite.argMaxVld := sample.io.argmax.valid

@@ -23,10 +23,12 @@ BSP with:
 & .\kv260\speculative\runtime\run_p7b_baremetal_build.ps1
 ```
 
-The current adapter deliberately launches one candidate at a time and holds q
-until its LM-head event arrives. This is the safe board-bring-up path for the
-existing token ingress. It validates end-to-end control semantics, not the
-final bandwidth-amortized batch-launch performance claim.
+The current adapter writes all K candidate IDs, enables speculative addressing,
+and pulses START exactly once. The PL token ingress snapshots the block and
+carries q as hardware metadata; software performs one wait for the complete
+K+1 result block. This closes the former sequential compatibility launcher.
+Full target-weight amortization still depends on the remaining P3 projection
+command integration and is not inferred from the launch protocol alone.
 
 `spec_runtime_metrics_t` provides passive cumulative counters for transactions,
 drafted/target/accepted/emitted tokens, all-match and mismatch outcomes,
