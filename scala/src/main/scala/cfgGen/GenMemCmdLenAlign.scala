@@ -65,6 +65,9 @@ class GenMemCmdLenAlign(
     val cmdSel = if (numOfCore == 1 && dmaSplit == 1 || numOfCore == 4) in UInt (2 bits) else null
     val projectionDone = out Bool()
     val projectionError = out Bool()
+    val projectionRetire = in Bool()
+    val projectionRetireTag = in Bits(6 bits)
+    val projectionRetireLayer = in UInt(8 bits)
     // Completion identity is returned with the sticky projection-done state
     // so an external production sequencer can retire only the descriptor it
     // issued.  The fields are latched at descriptor acceptance.
@@ -103,6 +106,7 @@ class GenMemCmdLenAlign(
   val descriptorBeatsPerRow = UInt(16 bits).setAsReg().init(0)
   val descriptorRowCnt = UInt(16 bits).setAsReg().init(0)
   val descriptorBeatCnt = UInt(16 bits).setAsReg().init(0)
+  val descriptorWeightComplete = Bool().setAsReg().init(False)
   val projectionDone = Bool().setAsReg().init(False)
   val projectionError = Bool().setAsReg().init(False)
 
@@ -132,6 +136,7 @@ class GenMemCmdLenAlign(
       descriptorBeatsPerRow := io.speculativeBatch.payload.beatsPerRow
       descriptorRowCnt.clearAll()
       descriptorBeatCnt.clearAll()
+      descriptorWeightComplete.clear()
       projectionError.clear()
     } otherwise {
       projectionError.set()
@@ -773,14 +778,31 @@ class GenMemCmdLenAlign(
     when(descriptorBeatCnt === descriptorBeatsPerRow - 1) {
       descriptorBeatCnt.clearAll()
       when(descriptorRowCnt === descriptorRows - 1) {
-        descriptorActive.clear()
-        projectionDone.set()
+        descriptorWeightComplete.set()
       } otherwise {
         descriptorRowCnt := descriptorRowCnt + 1
       }
     } otherwise {
       descriptorBeatCnt := descriptorBeatCnt + 1
     }
+  }
+
+  val retirementMatches = status.projectionRetireTag === descriptorProjectionTag &&
+    status.projectionRetireLayer === descriptorLayerId
+  when(status.projectionRetire) {
+    when(descriptorActive && descriptorWeightComplete && retirementMatches) {
+      descriptorActive.clear()
+      descriptorWeightComplete.clear()
+      projectionDone.set()
+    } otherwise {
+      projectionError.set()
+    }
+  }
+  // A rolled-back automatic epoch may have no arithmetic terminal. Release
+  // its descriptor so the next transaction or legacy decode cannot deadlock.
+  when(!status.speculativeEnable && descriptorActive && descriptorEpoch =/= 0) {
+    descriptorActive.clear()
+    descriptorWeightComplete.clear()
   }
 
   enIncHead := kvDone || qkvNoSzDone || qkvDone

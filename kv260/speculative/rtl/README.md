@@ -141,3 +141,9 @@ with:
 & .\kv260\speculative\rtl\run_p3d_projection_command_gate_xsim.ps1
 & .\kv260\speculative\rtl\run_p3e_axilite_auto_sequence_xsim.ps1
 ```
+
+Arithmetic-terminal descriptor retirement is checked with:
+
+```powershell
+& .\kv260\speculative\rtl\run_p3f_projection_retirement_xsim.ps1
+```

@@ -70,6 +70,8 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P3 downstream batched-result consumption: IN PROGRESS`
 
+`P3-F arithmetic-terminal retirement sub-gate: GO`
+
 `P4 causal KV tile scheduler sub-gate: GO`
 
 `P4-B numerical-reference sub-gate: GO`
@@ -286,6 +288,12 @@ the matching Q/K/V/O/G/U/D/LM grant is active. K=1..4 all issue 225 projections
 and 51,617,792 packed-weight beats, independent of K. Downstream consumption
 of the resulting K-lane row-major streams remains open. See
 `evidence/p3de-production-auto-sequence-and-grant-20260913.md`.
+
+P3-F moves descriptor retirement from the final input weight beat to the real
+shared-engine arithmetic terminal. Scalar Q/K/V/O/G/U/LM and packed-vector D
+outputs are counted with K-aware bounds and matching result tags; the next
+weight segment remains blocked until the reduction/accumulation path drains.
+See `evidence/p3f-arithmetic-terminal-retirement-20260914.md`.
 
 ## P4 implementation status
 

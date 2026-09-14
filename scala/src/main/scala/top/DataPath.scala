@@ -252,6 +252,10 @@ class DataPath(
 
   cmdGen.io.speculativeBatch << speculativeBatch
 
+  val projectionRetirement = new SpeculativeProjectionRetirement(bankLen = bankLen)
+  projectionRetirement.io.launch.valid := speculativeBatch.fire
+  projectionRetirement.io.launch.payload := speculativeBatch.payload
+
   val m_axi = if (dataMoverSplit == 1) master(Axi4(
     Axi4Config(
       addressWidth = cmdAddrWidth,
@@ -549,6 +553,10 @@ class DataPath(
   // by the on-chip production scheduler instead of the debug AXI-Lite port.
   engine.io.speculativeMode := speculativeActive || speculativeBatchEnabled
   engine.io.speculativeK := Mux(speculativeActive, speculativeK, speculativeBatchK)
+  projectionRetirement.io.scalarValid := engine.io.scalarOut.valid
+  projectionRetirement.io.scalarTag := engine.io.scalarOut.tuser
+  projectionRetirement.io.vectorValid := engine.io.vecOut.valid
+  projectionRetirement.io.vectorTag := engine.io.vecOut.tuser
 
   val node = new AllGatherSubModNew(
     id = id,
@@ -670,6 +678,9 @@ class DataPath(
   cmdGen.status.speculativeCommitted := speculativeBase
   cmdGen.status.speculativeK := speculativeK
   cmdGen.status.speculativeEpoch := speculativeEpoch
+  cmdGen.status.projectionRetire := projectionRetirement.io.done.valid
+  cmdGen.status.projectionRetireTag := projectionRetirement.io.done.projectionTag
+  cmdGen.status.projectionRetireLayer := projectionRetirement.io.done.layerId
   cmdGen.status.perfWindowActive := perfWindowActive
   cmdGen.status.perfWindowClear := perfWindowClear
   cmdGen.status.perfKvReadBeat := axi.int.bus.fire &&
