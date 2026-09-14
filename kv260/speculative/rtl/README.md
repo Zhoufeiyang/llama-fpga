@@ -147,3 +147,9 @@ Arithmetic-terminal descriptor retirement is checked with:
 ```powershell
 & .\kv260\speculative\rtl\run_p3f_projection_retirement_xsim.ps1
 ```
+### P4-G physical KV tile requester
+
+`run_p4g_kv_tile_requester_xsim.ps1` validates the generated
+`attn.P4KvTileRequester`: one DDR fetch fills the selected ping/pong BRAM,
+`fetch=0` replays without another command, output backpressure preserves every
+beat, and completion metadata matches the accepted request.

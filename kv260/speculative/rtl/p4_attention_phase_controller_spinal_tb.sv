@@ -60,6 +60,8 @@ module p4_attention_phase_controller_spinal_tb;
     tileDone_valid <= 0;
     softmaxDone_valid <= 0;
     if(auto_complete && tile_valid && tile_ready) begin
+      if(tile_source && tile_startToken != start_committedTokens)
+        $fatal(1, "tentative tile is not based at committed prefix");
       tileDone_valid <= 1;
       tileDone_phase <= tile_phase;
       tileDone_source <= tile_source;

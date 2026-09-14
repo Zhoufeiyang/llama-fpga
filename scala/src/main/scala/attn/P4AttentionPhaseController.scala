@@ -128,7 +128,10 @@ class P4AttentionPhaseController(
   io.tile.fetch := sourceReg || queryReg === 0
   io.tile.buffer := bufferReg
   io.tile.query := queryReg
-  io.tile.startToken := Mux(sourceReg, U(0, contextWidth bits), offsetReg)
+  // Tentative KV is written into the reserved physical slots immediately
+  // after the frozen committed prefix.  Keep startToken absolute for both
+  // sources so a production requester cannot accidentally read slot zero.
+  io.tile.startToken := Mux(sourceReg, committedReg, offsetReg)
   io.tile.tokenCount := Mux(sourceReg, queryReg.resize(contextWidth) + 1, committedCount)
   io.tile.last := sourceReg
 
@@ -184,7 +187,7 @@ class P4AttentionPhaseController(
           inflightSource := sourceReg
           inflightBuffer := bufferReg
           inflightQuery := queryReg
-          inflightStart := Mux(sourceReg, U(0, contextWidth bits), offsetReg)
+          inflightStart := Mux(sourceReg, committedReg, offsetReg)
           state := waitTile
         }
       }

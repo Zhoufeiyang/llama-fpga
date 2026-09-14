@@ -96,6 +96,8 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P4 production KV/softmax/V-AXPY completion hookup: IN PROGRESS`
 
+`P4-G physical DDR value-tile requester sub-gate: GO`
+
 `P5: IN PROGRESS`
 
 `P5-A pointer-commit RTL sub-gate: GO`
@@ -329,6 +331,13 @@ results close the arithmetic and source-elaboration sub-gates; the physical
 KV requester and V-AXPY terminal handshake remain open. See
 `evidence/p4c-production-attention-hookup-20260911.md` and
 `evidence/p4a-vendor-qk-v-20260912.md`.
+
+P4-G adds the synthesizable logical-DataMover-to-ping/pong value-tile
+requester. Historical prefix tiles issue one DDR command for q0 and replay
+locally for q1..K-1 under full backpressure; tentative tile addresses now use
+the absolute frozen committed base rather than slot zero. The remaining P4
+gate is the production scale/zero frontend and response-owner arbitration. See
+`evidence/p4g-physical-kv-tile-requester-20260914.md`.
 
 ## P5 implementation status
 
