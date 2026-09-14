@@ -98,6 +98,8 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P4-G physical DDR value-tile requester sub-gate: GO`
 
+`P4-H packed scale/zero requester sub-gate: GO`
+
 `P5: IN PROGRESS`
 
 `P5-A pointer-commit RTL sub-gate: GO`
@@ -338,8 +340,11 @@ P4-G adds the synthesizable logical-DataMover-to-ping/pong value-tile
 requester. Historical prefix tiles issue one DDR command for q0 and replay
 locally for q1..K-1 under full backpressure; tentative tile addresses now use
 the absolute frozen committed base rather than slot zero. The remaining P4
-gate is the production scale/zero frontend and response-owner arbitration. See
-`evidence/p4g-physical-kv-tile-requester-20260914.md`.
+gate is production response-owner arbitration and consumer hookup. P4-H adds
+an aligned requester for packed 32-bit scale/zero entries; generated-RTL xsim
+covers non-16-token starts, 512-bit line crossings, ping/pong replay, and
+backpressure. See `evidence/p4g-physical-kv-tile-requester-20260914.md` and
+`evidence/p4h-packed-kv-metadata-requester-20260914.md`.
 
 ## P5 implementation status
 
