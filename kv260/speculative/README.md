@@ -100,6 +100,8 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P4-H packed scale/zero requester sub-gate: GO`
 
+`P4-I serialized KV command/response ownership sub-gate: GO`
+
 `P5: IN PROGRESS`
 
 `P5-A pointer-commit RTL sub-gate: GO`
@@ -345,6 +347,13 @@ an aligned requester for packed 32-bit scale/zero entries; generated-RTL xsim
 covers non-16-token starts, 512-bit line crossings, ping/pong replay, and
 backpressure. See `evidence/p4g-physical-kv-tile-requester-20260914.md` and
 `evidence/p4h-packed-kv-metadata-requester-20260914.md`.
+
+P4-I composes those requesters into one ownership-checked frontend: metadata
+tag 2 always precedes value tag 1, responses are routed only to the registered
+owner, and replay emits no DDR command. The production AXI-Lite sequencer now
+also exports its real attention-barrier request to every core. The remaining
+gate is the DataPath command/response mux and arithmetic consumer hookup. See
+`evidence/p4i-serialized-kv-fetch-frontend-20260914.md`.
 
 ## P5 implementation status
 

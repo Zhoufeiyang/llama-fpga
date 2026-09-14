@@ -26,6 +26,10 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
     val speculativeBase = out UInt(11 bits)
     val speculativeK = out UInt(3 bits)
     val speculativeEpoch = out UInt(8 bits)
+    // Level request asserted only while the transformer sequencer is parked
+    // at its attention barrier.  Each core edge-detects/acknowledges it at
+    // the P4 controller boundary.
+    val speculativeAttentionRequest = out Bool()
     val perfWindowActive = out Bool()
     val perfWindowClear = out Bool()
     // Production speculative batch descriptor.  It is held until the
@@ -409,6 +413,7 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
   io.speculativeBase := speculativeBase
   io.speculativeK := speculativeBatchK
   io.speculativeEpoch := speculativeEpoch
+  io.speculativeAttentionRequest := projectionSequencer.io.attentionRequest
   io.perfWindowActive := speculativeActive &&
     resultCount < (speculativeBatchK + 1).resized
   io.perfWindowClear := speculativeStart && speculativeStartValid

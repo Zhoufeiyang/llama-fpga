@@ -206,6 +206,7 @@ class DataPath(
   val speculativeBase = in UInt(log2Up(maxToken + 1) bits)
   val speculativeK = in UInt(3 bits)
   val speculativeEpoch = in UInt(8 bits)
+  val speculativeAttentionRequest = in Bool()
   val perfWindowActive = in Bool()
   val perfWindowClear = in Bool()
 
