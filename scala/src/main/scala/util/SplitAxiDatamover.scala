@@ -29,6 +29,12 @@ class SplitAxiDatamover(busWidth: Int, split: Int, bufDepth: Int, offsetTable: L
       )))
     val s2mmCmd = slave(Stream(Bits(addressWidth + 40 bits)))
     val mm2sCmd = slave(Stream(Bits(addressWidth + 40 bits)))
+    // One aggregate status event is emitted only after every physical HP
+    // channel has returned the status beat for the same logical command.
+    val s2mmStatus = master(Stream(Bits(8 bits)))
+    val mm2sStatus = master(Stream(Bits(8 bits)))
+    val s2mmError = out Bool()
+    val mm2sError = out Bool()
     val m_axi = Vec(master(Axi4(
       Axi4Config(
         addressWidth = addressWidth,
@@ -129,9 +135,22 @@ class SplitAxiDatamover(busWidth: Int, split: Int, bufDepth: Int, offsetTable: L
 
     dma(i).io.m_axi.r.id.removeAssignments()
     dma(i).io.m_axi.b.id.removeAssignments()
-    dma(i).io.m_axis_s2mm_sts.freeRun()
-    dma(i).io.m_axis_mm2s_sts.freeRun()
   }
+
+  val s2mmStatusJoin = new SplitDmaStatusJoin(split)
+  val mm2sStatusJoin = new SplitDmaStatusJoin(split)
+  for (i <- 0 until split) {
+    s2mmStatusJoin.io.physical(i).valid := dma(i).io.m_axis_s2mm_sts.valid
+    s2mmStatusJoin.io.physical(i).payload := dma(i).io.m_axis_s2mm_sts.data
+    dma(i).io.m_axis_s2mm_sts.ready := s2mmStatusJoin.io.physical(i).ready
+    mm2sStatusJoin.io.physical(i).valid := dma(i).io.m_axis_mm2s_sts.valid
+    mm2sStatusJoin.io.physical(i).payload := dma(i).io.m_axis_mm2s_sts.data
+    dma(i).io.m_axis_mm2s_sts.ready := mm2sStatusJoin.io.physical(i).ready
+  }
+  io.s2mmStatus << s2mmStatusJoin.io.logical
+  io.mm2sStatus << mm2sStatusJoin.io.logical
+  io.s2mmError := dma.map(_.io.s2mm_err).reduce(_ || _)
+  io.mm2sError := dma.map(_.io.mm2s_err).reduce(_ || _)
 
   inLastBuf.io.push.valid := inBuf.head.io.push.fire
   inLastBuf.io.pop.ready := inBuf.head.io.pop.fire

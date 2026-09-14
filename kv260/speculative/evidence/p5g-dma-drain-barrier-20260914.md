@@ -1,6 +1,6 @@
 # P5-G speculative DMA drain barrier — 2026-09-14
 
-`P5 production transaction-completion source/xsim gate: GO`
+`P5 KV command-ingress/data-frame drain sub-gate: GO`
 
 `P5 live-board gate: IN PROGRESS`
 
@@ -12,7 +12,7 @@ end-of-frame data beat. The count survives rollback: physical DDR traffic from
 the old epoch must drain to zero before a new epoch may start. Changing epoch
 with outstanding traffic raises a sticky hardware error.
 
-`GenMemCmdLenAlign` connects the tracker to its real KV command/data boundaries.
+`GenMemCmdLenAlign` connects this first tracker to its KV command/data boundaries.
 The drained/error state crosses the existing DataPath-to-AXI-Lite status path.
 AXI-Lite START and COMMIT now require the drain barrier, and the status register
 at `0x130` exposes `drained` on bit 4 and the tracker error on bit 5. Rollback
@@ -35,5 +35,7 @@ P5B_LAST_CONTEXT committed=1024
 P5B_AXILITE_POINTER_CONTROL_GO REGISTERS=1 EARLY_COMMIT_BLOCKED=1 COMMIT_AFTER_RESULTS=1 DMA_DRAIN_BEFORE_COMMIT=1 ROLLBACK=1 LAST_CONTEXT_1024=1 TXN_EPOCH=1 FAULT=1 PERF_WINDOW=1 CLEAR_PULSES=4
 ```
 
-Complete `top.EdgeLLMInst` elaboration passes after integration with zero
-errors. No synthesis or implementation run was performed.
+This gate proves the command-FIFO/data-frame barrier only. Physical DataMover
+status completion is closed separately by P5-H; an S2MM payload `last` alone is
+not presented as proof that the DDR write response completed. No synthesis or
+implementation run was performed.

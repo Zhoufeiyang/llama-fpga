@@ -114,7 +114,7 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P5 source-level address/metadata sub-gates: GO`
 
-`P5 production transaction-completion source/xsim gate: GO`
+`P5 production MM2S/S2MM transaction-completion source/xsim gate: GO`
 
 `P5-F transaction-active/address-freeze sub-gate: GO`
 
@@ -403,6 +403,12 @@ increments the outstanding count and only an accepted S2MM frame terminal
 retires it; rollback preserves the count, while the next START and pointer
 COMMIT are blocked until it reaches zero. See
 `evidence/p5g-dma-drain-barrier-20260914.md`.
+
+P5-H closes the physical status side of that barrier. All four split HP
+DataMover status streams must join before one logical MM2S/S2MM command retires;
+the post-remap command handshakes and aggregate status terminals drive separate
+epoch trackers in the production DataPath. See
+`evidence/p5h-physical-datamover-status-20260914.md`.
 
 ## P6 implementation status
 

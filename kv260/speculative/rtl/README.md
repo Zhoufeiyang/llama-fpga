@@ -159,3 +159,7 @@ beat, and completion metadata matches the accepted request.
 `run_p5g_outstanding_tracker_xsim.ps1` verifies that rollback retains the
 outstanding physical-write count, epoch overlap faults, and a fresh epoch is
 accepted only after all old response frames retire.
+
+`run_p5h_split_status_join_xsim.ps1` additionally proves that all four physical
+KV260 HP DataMover status lanes are required and retired atomically; delayed
+lanes and downstream backpressure cannot produce an early logical completion.

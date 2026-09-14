@@ -348,6 +348,15 @@ class DataPath(
   val mm2sCmdLocal = if (cmdAddrWidth == 32) cmdGen.io.mm2sCmd else mm2sCmdReMap.io.output
   val s2mmCmdLocal = if (cmdAddrWidth == 32) cmdGen.io.s2mmCmd else s2mmCmdReMap.io.output
 
+  // Physical DataMover transaction terminals. These are assigned in the
+  // selected split/non-split implementation below and feed epoch drain
+  // trackers after the actual command handshake and status response.
+  val physicalMm2sCmdFire = Bool()
+  val physicalS2mmCmdFire = Bool()
+  val physicalMm2sStatusFire = Bool()
+  val physicalS2mmStatusFire = Bool()
+  val physicalDmaError = Bool()
+
   if (dataMoverSplit == 1) {
     dmaMig.io.m_axi_s2mm_aresetn := aresetn
     dmaMig.io.m_axi_mm2s_aresetn := aresetn
@@ -364,8 +373,13 @@ class DataPath(
     m_axi << dmaMig.io.m_axi
     dmaMig.io.m_axi.r.id.removeAssignments()
     dmaMig.io.m_axi.b.id.removeAssignments()
-    dmaMig.io.m_axis_s2mm_sts.freeRun()
-    dmaMig.io.m_axis_mm2s_sts.freeRun()
+    dmaMig.io.m_axis_s2mm_sts.ready := True
+    dmaMig.io.m_axis_mm2s_sts.ready := True
+    physicalMm2sCmdFire := dmaMig.io.s_axis_mm2s_cmd.fire && speculativeActive
+    physicalS2mmCmdFire := dmaMig.io.s_axis_s2mm_cmd.fire && speculativeActive
+    physicalMm2sStatusFire := dmaMig.io.m_axis_mm2s_sts.fire
+    physicalS2mmStatusFire := dmaMig.io.m_axis_s2mm_sts.fire
+    physicalDmaError := dmaMig.io.mm2s_err || dmaMig.io.s2mm_err
   }
 
   if (dataMoverSplit > 1) {
@@ -374,8 +388,29 @@ class DataPath(
     dmaHp.io.s2mm << cmdGen.io.s2mm
     dmaHp.io.mm2sCmd << mm2sCmdLocal
     dmaHp.io.s2mmCmd << s2mmCmdLocal
+    dmaHp.io.mm2sStatus.ready := True
+    dmaHp.io.s2mmStatus.ready := True
+    physicalMm2sCmdFire := dmaHp.io.mm2sCmd.fire && speculativeActive
+    physicalS2mmCmdFire := dmaHp.io.s2mmCmd.fire && speculativeActive
+    physicalMm2sStatusFire := dmaHp.io.mm2sStatus.fire
+    physicalS2mmStatusFire := dmaHp.io.s2mmStatus.fire
+    physicalDmaError := dmaHp.io.mm2sError || dmaHp.io.s2mmError
     (m_axi_hp, dmaHp.io.m_axi).zipped.foreach(_ << _)
   }
+
+  val physicalMm2sTracker = new util.SpeculativeOutstandingTracker()
+  physicalMm2sTracker.io.active := speculativeActive
+  physicalMm2sTracker.io.epoch := speculativeEpoch
+  physicalMm2sTracker.io.issue := physicalMm2sCmdFire
+  physicalMm2sTracker.io.retire := physicalMm2sStatusFire && !physicalMm2sTracker.io.drained
+  physicalMm2sTracker.io.clearError := !speculativeActive && physicalMm2sTracker.io.drained
+
+  val physicalS2mmTracker = new util.SpeculativeOutstandingTracker()
+  physicalS2mmTracker.io.active := speculativeActive
+  physicalS2mmTracker.io.epoch := speculativeEpoch
+  physicalS2mmTracker.io.issue := physicalS2mmCmdFire
+  physicalS2mmTracker.io.retire := physicalS2mmStatusFire && !physicalS2mmTracker.io.drained
+  physicalS2mmTracker.io.clearError := !speculativeActive && physicalS2mmTracker.io.drained
 
   val axi = new AxiBusDistributor(
     busWidth = busWidth,
@@ -841,8 +876,10 @@ class DataPath(
   toAxiLite.projectionDoneLayer := cmdGen.status.projectionDoneLayer
   toAxiLite.attentionDone := speculativeAttentionDone
   toAxiLite.mlpActivationDone := sOut.mlpActivationDone && speculativeActive
-  toAxiLite.speculativeKvWritesDrained := cmdGen.status.speculativeKvWritesDrained
-  toAxiLite.speculativeKvWriteError := cmdGen.status.speculativeKvWriteError
+  toAxiLite.speculativeKvWritesDrained := cmdGen.status.speculativeKvWritesDrained &&
+    physicalMm2sTracker.io.drained && physicalS2mmTracker.io.drained
+  toAxiLite.speculativeKvWriteError := cmdGen.status.speculativeKvWriteError ||
+    physicalMm2sTracker.io.error || physicalS2mmTracker.io.error || physicalDmaError
   toAxiLite.descriptorActive := cmdGen.status.descriptorActive
   toAxiLite.perfWeightBytes := cmdGen.status.perfWeightBytes
   toAxiLite.perfKvReadBytes := cmdGen.status.perfKvReadBytes
