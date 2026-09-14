@@ -104,6 +104,8 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P4-I serialized KV command/response ownership sub-gate: GO`
 
+`P4-J shared DataMover owner bridge sub-gate: GO`
+
 `P5: IN PROGRESS`
 
 `P5-A pointer-commit RTL sub-gate: GO`
