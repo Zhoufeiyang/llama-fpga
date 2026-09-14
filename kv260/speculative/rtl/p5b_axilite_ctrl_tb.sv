@@ -20,6 +20,7 @@ module p5b_axilite_ctrl_tb;
   logic status_projectionDone,status_projectionError;
   logic[5:0]status_projectionDoneTag;logic[7:0]status_projectionDoneLayer;
   logic status_attentionDone,status_mlpActivationDone;
+  logic status_speculativeKvWritesDrained,status_speculativeKvWriteError;
   logic[63:0]status_perfWeightBytes,status_perfKvReadBytes,status_perfKvWriteBytes,status_perfVerifyCycles,status_perfMemoryStallCycles;
   integer errors,clearPulses,i,tokenSeen;logic[31:0]rd;
   AxiLiteCtrl dut(.*);
@@ -53,6 +54,7 @@ module p5b_axilite_ctrl_tb;
     status_argMaxVld=0;status_argMaxIndex=0;status_prefill=0;
     io_speculativeBatch_ready=1;status_projectionDone=0;status_projectionError=0;
     status_projectionDoneTag=0;status_projectionDoneLayer=0;status_attentionDone=0;status_mlpActivationDone=0;
+    status_speculativeKvWritesDrained=1;status_speculativeKvWriteError=0;
     status_perfWeightBytes=0;status_perfKvReadBytes=0;status_perfKvWriteBytes=0;status_perfVerifyCycles=0;status_perfMemoryStallCycles=0;
     repeat(5)@(posedge clk);reset=0;
     // Exercise the AXI-Lite candidate window through the integrated ingress.
@@ -87,6 +89,12 @@ module p5b_axilite_ctrl_tb;
       !io_speculativeActive||io_speculativeBase!=100||io_speculativeK!=4||io_speculativeEpoch!=2||!io_perfWindowActive)errors=errors+1;
     for(i=0;i<4;i=i+1)push_argmax(16'h5000+i);
     axil_read(32'h130,rd);if(!rd[3])errors=errors+1;
+    // Target results alone cannot publish the pointer while speculative KV
+    // DMA commands or response frames remain in flight.
+    status_speculativeKvWritesDrained=0;
+    axil_write(32'h120,32'h00000102);repeat(3)@(posedge clk);
+    axil_read(32'h130,rd);if(!rd[1]||rd[4]||io_speculativeCommitted!=100)errors=errors+1;
+    status_speculativeKvWritesDrained=1;
     axil_write(32'h120,32'h00000102);repeat(3)@(posedge clk);
     axil_read(32'h108,rd);if(rd[10:0]!=102||io_speculativeCommitted!=102)errors=errors+1;
     axil_read(32'h130,rd);if(!rd[0]||rd[1]||rd[26:16]!=102||io_perfWindowActive)errors=errors+1;
@@ -109,6 +117,6 @@ module p5b_axilite_ctrl_tb;
     axil_write(32'h104,0);axil_write(32'h100,1);repeat(3)@(posedge clk);axil_read(32'h130,rd);
     if(!rd[2]||rd[1]||clearPulses!=4)errors=errors+1;
     if(errors)$fatal(1,"P5-B AXI-Lite control failed with %0d errors",errors);
-    $display("P5B_AXILITE_POINTER_CONTROL_GO REGISTERS=1 EARLY_COMMIT_BLOCKED=1 COMMIT_AFTER_RESULTS=1 ROLLBACK=1 LAST_CONTEXT_1024=1 TXN_EPOCH=1 FAULT=1 PERF_WINDOW=1 CLEAR_PULSES=%0d",clearPulses);$finish;
+    $display("P5B_AXILITE_POINTER_CONTROL_GO REGISTERS=1 EARLY_COMMIT_BLOCKED=1 COMMIT_AFTER_RESULTS=1 DMA_DRAIN_BEFORE_COMMIT=1 ROLLBACK=1 LAST_CONTEXT_1024=1 TXN_EPOCH=1 FAULT=1 PERF_WINDOW=1 CLEAR_PULSES=%0d",clearPulses);$finish;
   end
 endmodule

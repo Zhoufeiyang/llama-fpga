@@ -51,6 +51,8 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
     val projectionDoneLayer = in UInt(8 bits) addTag (crossClockDomain)
     val attentionDone = in Bool() addTag (crossClockDomain)
     val mlpActivationDone = in Bool() addTag (crossClockDomain)
+    val speculativeKvWritesDrained = in Bool() addTag (crossClockDomain)
+    val speculativeKvWriteError = in Bool() addTag (crossClockDomain)
     val perfWeightBytes = in UInt(64 bits) addTag (crossClockDomain)
     val perfKvReadBytes = in UInt(64 bits) addTag (crossClockDomain)
     val perfKvWriteBytes = in UInt(64 bits) addTag (crossClockDomain)
@@ -231,11 +233,11 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
   val speculativeEnd = speculativeCommitted.resize(12) + speculativeBatchK.resize(12)
   val speculativeStartValid = !speculativeActive && resultCount === 0 &&
     speculativeBatchK >= 1 && speculativeBatchK <= 4 && speculativeEnd <= 1024 &&
-    projectionSequencer.io.start.ready
+    projectionSequencer.io.start.ready && status.speculativeKvWritesDrained
   automaticSequenceStart := speculativeStart && speculativeStartValid
   val speculativeCommitValid = speculativeActive &&
     resultCount === (speculativeBatchK + 1).resized &&
-    speculativeCommitDelta <= speculativeBatchK
+    speculativeCommitDelta <= speculativeBatchK && status.speculativeKvWritesDrained
   automaticSequenceAbort := speculativeRollback ||
     (speculativeCommit && speculativeCommitValid)
   when(speculativeStart) {
@@ -272,6 +274,9 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
       speculativeFault.set()
     }
   }
+  when(status.speculativeKvWriteError) {
+    speculativeFault.set()
+  }
   when(resultAck && !speculativeActive) {
     resultCount.clearAll()
     for (i <- 0 until 5) targetIds(i).clearAll()
@@ -284,6 +289,8 @@ class AxiLiteCtrl(resetLowPolarity: Boolean = true) extends Component {
   speculativeStatus(2) := speculativeFault
   speculativeStatus(3) := speculativeActive &&
     resultCount === (speculativeBatchK + 1).resized
+  speculativeStatus(4) := status.speculativeKvWritesDrained
+  speculativeStatus(5) := status.speculativeKvWriteError
   speculativeStatus(26 downto 16) := speculativePointer.asBits
   ctrl.read(speculativeStatus, 0x130, 0)
 

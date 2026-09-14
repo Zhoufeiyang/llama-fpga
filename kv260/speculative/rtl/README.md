@@ -153,3 +153,9 @@ Arithmetic-terminal descriptor retirement is checked with:
 `attn.P4KvTileRequester`: one DDR fetch fills the selected ping/pong BRAM,
 `fetch=0` replays without another command, output backpressure preserves every
 beat, and completion metadata matches the accepted request.
+
+### P5-G speculative DMA drain barrier
+
+`run_p5g_outstanding_tracker_xsim.ps1` verifies that rollback retains the
+outstanding physical-write count, epoch overlap faults, and a fresh epoch is
+accepted only after all old response frames retire.

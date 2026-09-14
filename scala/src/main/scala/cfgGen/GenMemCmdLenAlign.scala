@@ -74,6 +74,8 @@ class GenMemCmdLenAlign(
     val projectionDoneTag = out Bits(6 bits)
     val projectionDoneLayer = out UInt(8 bits)
     val descriptorActive = out Bool()
+    val speculativeKvWritesDrained = out Bool()
+    val speculativeKvWriteError = out Bool()
     val perfKvReadBeat = in Bool()
     val perfWindowActive = in Bool()
     val perfWindowClear = in Bool()
@@ -1026,6 +1028,17 @@ class GenMemCmdLenAlign(
     val cmdFifo = new StreamFifo(Bits(72 bits), 32, forFMax = true)
     cmdFifo.io.push << s2mmCmdThrow
     io.s2mmCmd << cmdFifo.io.pop
+
+    // Count at the command-FIFO ingress, not at its downstream output, so a
+    // queued command is already part of the drain barrier. A response retires
+    // only at the accepted end-of-frame data beat. Rollback may deassert
+    // speculativeEnable, but the count deliberately survives until zero.
+    val epochTracker = new util.SpeculativeOutstandingTracker()
+    epochTracker.io.active := status.speculativeEnable
+    epochTracker.io.epoch := status.speculativeEpoch
+    epochTracker.io.issue := s2mmCmdThrow.fire && status.speculativeEnable
+    epochTracker.io.retire := io.s2mm.fire && io.s2mm.last && !epochTracker.io.drained
+    epochTracker.io.clearError := !status.speculativeEnable && epochTracker.io.drained
   }
 
   status.projectionDone := projectionDone
@@ -1033,6 +1046,8 @@ class GenMemCmdLenAlign(
   status.projectionDoneTag := descriptorProjectionTag
   status.projectionDoneLayer := descriptorLayerId
   status.descriptorActive := descriptorActive
+  status.speculativeKvWritesDrained := s2mm.epochTracker.io.drained
+  status.speculativeKvWriteError := s2mm.epochTracker.io.error
   status.speculativeQueryActive := activeSpeculativeQuery
   status.perfWeightBytes := perfCounters.io.weightBytes
   status.perfKvReadBytes := perfCounters.io.kvReadBytes

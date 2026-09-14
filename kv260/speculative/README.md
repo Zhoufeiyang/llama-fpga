@@ -114,7 +114,7 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P5 source-level address/metadata sub-gates: GO`
 
-`P5 production transaction-completion gating: IN PROGRESS`
+`P5 production transaction-completion source/xsim gate: GO`
 
 `P5-F transaction-active/address-freeze sub-gate: GO`
 
@@ -395,6 +395,12 @@ frozen base only inside that epoch; commit is accepted only after all K+1
 target results are present, while rollback prevents late results from entering
 a later transaction. Focused AXI-Lite xsim and complete-top elaboration pass.
 See `evidence/p5f-production-transaction-epoch-20260913.md`.
+
+P5-G adds an epoch-scoped physical KV DMA drain barrier. Command-FIFO ingress
+increments the outstanding count and only an accepted S2MM frame terminal
+retires it; rollback preserves the count, while the next START and pointer
+COMMIT are blocked until it reaches zero. See
+`evidence/p5g-dma-drain-barrier-20260914.md`.
 
 ## P6 implementation status
 

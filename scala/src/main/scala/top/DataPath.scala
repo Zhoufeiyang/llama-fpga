@@ -188,6 +188,8 @@ class DataPath(
     val attentionDone = out Bool()
     val mlpActivationDone = out Bool()
     val descriptorActive = out Bool()
+    val speculativeKvWritesDrained = out Bool()
+    val speculativeKvWriteError = out Bool()
     val perfWeightBytes = out UInt(64 bits)
     val perfKvReadBytes = out UInt(64 bits)
     val perfKvWriteBytes = out UInt(64 bits)
@@ -839,6 +841,8 @@ class DataPath(
   toAxiLite.projectionDoneLayer := cmdGen.status.projectionDoneLayer
   toAxiLite.attentionDone := speculativeAttentionDone
   toAxiLite.mlpActivationDone := sOut.mlpActivationDone && speculativeActive
+  toAxiLite.speculativeKvWritesDrained := cmdGen.status.speculativeKvWritesDrained
+  toAxiLite.speculativeKvWriteError := cmdGen.status.speculativeKvWriteError
   toAxiLite.descriptorActive := cmdGen.status.descriptorActive
   toAxiLite.perfWeightBytes := cmdGen.status.perfWeightBytes
   toAxiLite.perfKvReadBytes := cmdGen.status.perfKvReadBytes
