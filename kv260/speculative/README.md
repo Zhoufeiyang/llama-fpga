@@ -160,7 +160,9 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P7-I single-start batched candidate ingress sub-gate: GO`
 
-`P7 real quantized draft sub-gate: IN PROGRESS`
+`P7 real-weight target-derived INT8 draft source/A53 sub-gate: GO`
+
+`P7 draft acceptance-rate board sub-gate: IN PROGRESS`
 
 The repository baseline is commit `df89b67e50383f4716e03aac35d6a25a35b0f98e`.
 The fixed-linker application now completes end-to-end generation on KV260.
@@ -495,3 +497,10 @@ snapshots and emits the ordered block with q metadata held across each active
 token transaction. The 1024-token endpoint is represented without truncation,
 and the final physical slots 1020 through 1023 pass focused tests. See
 `evidence/p7i-batched-launch-binding-20260913.md`.
+
+P7-J replaces the synthetic tiny-draft weights with a reproducible INT8 model
+derived from the P0-approved trained target embedding table. Export is guarded
+by the 2.1-GB source SHA256, C and NumPy logits are bit/numerically equivalent,
+and an A53 ELF binds the model at the budgeted `0x722F6000` DDR address to the
+production speculative callback. See
+`evidence/p7j-target-derived-int8-draft-20260914.md`.

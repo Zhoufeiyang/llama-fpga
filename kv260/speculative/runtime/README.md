@@ -58,3 +58,9 @@ strict versioned/CRC-checked model loader. `run_p7f_tiny_draft.ps1` regenerates
 the deterministic 512,064-byte test model, compares every generated C logit
 against NumPy, and compiles an AArch64 freestanding entry object. Its weights
 are synthetic validation vectors, not a trained language model.
+
+`tiny_draft_from_target.py` is the production-weight counterpart. It accepts
+only the P0-approved `llama0.bin` SHA256, extracts a trained 8-D embedding
+slice, deterministically quantizes/ties it into the same checked format, and
+`run_p7j_target_derived_draft.ps1` proves C/NumPy equivalence plus the A53
+runtime binding. Acceptance rate remains a board-measured property.
