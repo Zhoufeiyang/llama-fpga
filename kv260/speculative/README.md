@@ -70,6 +70,8 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P3 downstream batched-result consumption: IN PROGRESS`
 
+`P2-C row-major K-lane sideband router sub-gate: GO`
+
 `P3-F arithmetic-terminal retirement sub-gate: GO`
 
 `P4 causal KV tile scheduler sub-gate: GO`
