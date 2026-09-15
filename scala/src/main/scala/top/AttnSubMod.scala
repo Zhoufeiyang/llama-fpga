@@ -75,6 +75,10 @@ class AttnSubMod(
       // token and marks the final element with Fragment.last.  This is the
       // only completion input required from outside AttnSubMod.
       val vAxpyTileOut = slave(Flow(Fragment(util.AxiFrame(Bits(width bits), userBit = 6))))
+      val transportTileDone = slave(Flow(attn.P4AttentionTileDone(maxToken)))
+      val vBatchDone = in Bool()
+      val transportError = in Bool()
+      val transportErrorCode = in UInt(4 bits)
       val queryDone = master(Flow(UInt(2 bits)))
       val busy = out Bool()
       val done = out Bool()
@@ -179,9 +183,13 @@ class AttnSubMod(
   p4Controller.io.start.payload := io.p4.start.payload
   io.p4.start.ready := p4Controller.io.start.ready && status.speculativeEnable
 
-  p4Controller.io.tileDone << p4Completion.io.tileDone
+  p4Controller.io.tileDone.valid := Mux(p4Completion.io.tileDone.valid,
+    True, io.p4.transportTileDone.valid)
+  p4Controller.io.tileDone.payload := Mux(p4Completion.io.tileDone.valid,
+    p4Completion.io.tileDone.payload, io.p4.transportTileDone.payload)
   p4Controller.io.softmaxDone << p4Completion.io.softmaxDone
-  p4Controller.io.completionError := p4Completion.io.error
+  p4Controller.io.vBatchDone := io.p4.vBatchDone
+  p4Controller.io.completionError := p4Completion.io.error || io.p4.transportError
 
   io.p4.tile << p4Controller.io.tile
   io.p4.softmax << p4Controller.io.softmax
@@ -190,10 +198,14 @@ class AttnSubMod(
   io.p4.done := p4Controller.io.done
   io.p4.error := p4Controller.io.error
   io.p4.errorCode := p4Controller.io.errorCode
-  io.p4.completionError := p4Completion.io.error
-  io.p4.completionErrorCode := p4Completion.io.errorCode
+  io.p4.completionError := p4Completion.io.error || io.p4.transportError
+  io.p4.completionErrorCode := Mux(io.p4.transportError,
+    io.p4.transportErrorCode, p4Completion.io.errorCode)
 
-  p4Completion.io.tileAccepted := p4Controller.io.tile.fire
+  // QK retirement is arithmetic-score based. V tile retirement only means
+  // its input frame was accepted; the controller separately waits for the
+  // final K-lane AXPY vector terminal before completing the batch.
+  p4Completion.io.tileAccepted := p4Controller.io.tile.fire && !p4Controller.io.tile.phase
   p4Completion.io.tile := p4Controller.io.tile.payload
   p4Completion.io.qkScoreValid := qk.io.output.valid && status.speculativeEnable
   p4Completion.io.softmaxAccepted := p4Controller.io.softmax.fire

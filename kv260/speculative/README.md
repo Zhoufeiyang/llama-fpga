@@ -106,6 +106,8 @@ met. Failed builds and experiments must retain their logs and artifact hashes.
 
 `P4-J shared DataMover owner bridge sub-gate: GO`
 
+`P4-K production DataPath command/data/metadata hookup sub-gate: GO`
+
 `P5: IN PROGRESS`
 
 `P5-A pointer-commit RTL sub-gate: GO`
@@ -337,16 +339,16 @@ and softmax-to-V-AXPY connections. Vendor-IP softmax simulation passes finite,
 causal-length, and normalization checks for K=1..4. Production QK and focused V
 weighted-accumulation simulations use the actual Xilinx FP16 multiplier and
 accumulator models and pass for K=1..4, including bit-exact K=1 behavior. These
-results close the arithmetic and source-elaboration sub-gates; the physical
-KV requester and V-AXPY terminal handshake remain open. See
+results close the arithmetic and source-elaboration sub-gates. The physical
+KV requester and V-AXPY terminal handshake were subsequently closed by P4-K. See
 `evidence/p4c-production-attention-hookup-20260911.md` and
 `evidence/p4a-vendor-qk-v-20260912.md`.
 
 P4-G adds the synthesizable logical-DataMover-to-ping/pong value-tile
 requester. Historical prefix tiles issue one DDR command for q0 and replay
 locally for q1..K-1 under full backpressure; tentative tile addresses now use
-the absolute frozen committed base rather than slot zero. The remaining P4
-gate is production response-owner arbitration and consumer hookup. P4-H adds
+the absolute frozen committed base rather than slot zero. P4-J/P4-K
+subsequently close production response-owner arbitration and consumer hookup. P4-H adds
 an aligned requester for packed 32-bit scale/zero entries; generated-RTL xsim
 covers non-16-token starts, 512-bit line crossings, ping/pong replay, and
 backpressure. See `evidence/p4g-physical-kv-tile-requester-20260914.md` and
@@ -355,9 +357,20 @@ backpressure. See `evidence/p4g-physical-kv-tile-requester-20260914.md` and
 P4-I composes those requesters into one ownership-checked frontend: metadata
 tag 2 always precedes value tag 1, responses are routed only to the registered
 owner, and replay emits no DDR command. The production AXI-Lite sequencer now
-also exports its real attention-barrier request to every core. The remaining
-gate is the DataPath command/response mux and arithmetic consumer hookup. See
+also exports its real attention-barrier request to every core. P4-K connects
+the frontend to the production DataPath command, response, metadata, and
+attention-consumer paths. See
 `evidence/p4i-serialized-kv-fetch-frontend-20260914.md`.
+
+P4-K closes the production source-integration sub-gate. It arbitrates legacy
+and speculative logical commands before address remapping, demultiplexes DMA
+data/status by registered request ownership, routes K/V metadata without the
+legacy token heuristic, and waits for the real V-AXPY batch terminal before
+reporting completion. Generated-RTL xsim passes K=1..4 with K-independent
+historical DDR tile counts, and the complete KV260 top elaborates without
+hierarchy or connectivity errors. Final placed-and-routed hardware and board
+numeric evidence remain part of the single final build/board gate. See
+`evidence/p4k-production-datapath-hookup-20260915.md`.
 
 ## P5 implementation status
 

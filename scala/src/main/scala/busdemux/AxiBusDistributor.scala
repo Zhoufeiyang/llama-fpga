@@ -44,6 +44,12 @@ class AxiBusDistributor(
     val enPredictor = in Bool()
     val kSzOut = slave(Stream(Bits(32 bits)))
     val vSzOut = slave(Stream(Bits(32 bits)))
+    // P4 supplies the exact metadata slice for the currently streamed tile.
+    // These ports bypass KvCacheCase's legacy token-zero/counting heuristic;
+    // selection is enabled only while the production P4 frontend owns KV.
+    val p4Enable = in Bool()
+    val p4KSzOut = slave(Stream(Bits(32 bits)))
+    val p4VSzOut = slave(Stream(Bits(32 bits)))
 
     //    val busDeMuxSel = in UInt (3 bits)
     //    val busMuxSel = in UInt (2 bits)
@@ -405,16 +411,18 @@ class AxiBusDistributor(
     extPackDeMux.io.input << extPack.m2sPipe()
     extPackDeMux.io.select := isVOut.asUInt
 
-    val kMux = new StreamMux(Bits(scaleZeroPackWidth bits), 2)
+    val kMux = new StreamMux(Bits(scaleZeroPackWidth bits), 3)
     kMux.io.inputs(0) << extPackDeMux.io.outputs(0)
     kMux.io.inputs(1) << io.kSzOut
-    kMux.io.select := kSelLocal.asUInt
+    kMux.io.inputs(2) << io.p4KSzOut
+    kMux.io.select := Mux(io.p4Enable, U(2, 2 bits), kSelLocal.asUInt.resize(2))
     kMux.io.output >> kPack
 
-    val vMux = new StreamMux(Bits(scaleZeroPackWidth bits), 2)
+    val vMux = new StreamMux(Bits(scaleZeroPackWidth bits), 3)
     vMux.io.inputs(0) << extPackDeMux.io.outputs(1)
     vMux.io.inputs(1) << io.vSzOut
-    vMux.io.select := vSelLocal.asUInt
+    vMux.io.inputs(2) << io.p4VSzOut
+    vMux.io.select := Mux(io.p4Enable, U(2, 2 bits), vSelLocal.asUInt.resize(2))
     vMux.io.output >> vPack
 
     val kFork = new StreamFork(NoData(), 2)

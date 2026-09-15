@@ -62,6 +62,10 @@ class GenMemCmdLenAlign(
     val speculativeK = in UInt(3 bits)
     val speculativeEpoch = in UInt(8 bits)
     val speculativeQueryActive = out UInt(2 bits)
+    // Current layer/head logical base exported for the P4 requester.  Keeping
+    // this as an explicit child output avoids illegal parent access to an
+    // internal register and guarantees identical legacy/P4 address lineage.
+    val p4AttnHeadBase = out UInt(32 bits)
     val cmdSel = if (numOfCore == 1 && dmaSplit == 1 || numOfCore == 4) in UInt (2 bits) else null
     val projectionDone = out Bool()
     val projectionError = out Bool()
@@ -1049,6 +1053,7 @@ class GenMemCmdLenAlign(
   status.speculativeKvWritesDrained := s2mm.epochTracker.io.drained
   status.speculativeKvWriteError := s2mm.epochTracker.io.error
   status.speculativeQueryActive := activeSpeculativeQuery
+  status.p4AttnHeadBase := attnHeadBase
   status.perfWeightBytes := perfCounters.io.weightBytes
   status.perfKvReadBytes := perfCounters.io.kvReadBytes
   status.perfKvWriteBytes := perfCounters.io.kvWriteBytes

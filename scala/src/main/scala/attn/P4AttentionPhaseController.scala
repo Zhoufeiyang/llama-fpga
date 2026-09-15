@@ -73,6 +73,9 @@ class P4AttentionPhaseController(
     val tileDone = slave(Flow(P4AttentionTileDone(maxContext)))
     val softmax = master(Stream(P4AttentionSoftmax(maxContext)))
     val softmaxDone = slave(Flow(P4AttentionSoftmaxDone()))
+    // V tiles retire at the accepted transport boundary, while the complete
+    // K-lane reduction retires only at the shared AXPY vector terminal.
+    val vBatchDone = in Bool()
     val completionError = in Bool()
     val queryDone = master(Flow(UInt(2 bits)))
     val busy = out Bool()
@@ -88,6 +91,7 @@ class P4AttentionPhaseController(
   val waitSoftmax = U(4, 3 bits)
   val complete = U(5, 3 bits)
   val fault = U(6, 3 bits)
+  val waitVBatch = U(7, 3 bits)
   val state = Reg(UInt(3 bits)) init idle
 
   val kReg = Reg(UInt(3 bits)) init 0
@@ -139,7 +143,12 @@ class P4AttentionPhaseController(
   io.softmax.query := queryReg
   io.softmax.tokenCount := (committedReg.resize(contextWidth) + queryReg.resize(contextWidth) + 1).resized
 
-  io.queryDone.valid := state === waitTile && io.tileDone.valid && inflightPhase && inflightSource &&
+  val matchedVTileDone = state === waitTile && io.tileDone.valid && inflightPhase && inflightSource &&
+    io.tileDone.phase === inflightPhase && io.tileDone.source === inflightSource &&
+    io.tileDone.buffer === inflightBuffer && io.tileDone.query === inflightQuery &&
+    io.tileDone.startToken === inflightStart
+  io.queryDone.valid := (matchedVTileDone && queryReg =/= (kReg - 1)) ||
+    (state === waitVBatch && io.vBatchDone)
     io.tileDone.phase === inflightPhase && io.tileDone.source === inflightSource &&
     io.tileDone.buffer === inflightBuffer &&
     io.tileDone.query === inflightQuery && io.tileDone.startToken === inflightStart
@@ -228,7 +237,7 @@ class P4AttentionPhaseController(
                 }
               } otherwise {
                 when(queryReg === (kReg - 1)) {
-                  state := complete
+                  state := waitVBatch
                 } otherwise {
                   // The committed V tiles for every query were already
                   // consumed by the tile-major walk. Advance only through
@@ -269,6 +278,9 @@ class P4AttentionPhaseController(
             }
           }
         }
+      }
+      is(waitVBatch) {
+        when(io.vBatchDone) { state := complete }
       }
       is(complete) {
         state := idle

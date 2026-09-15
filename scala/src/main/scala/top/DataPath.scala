@@ -175,6 +175,33 @@ class DataPath(
     dmaSplit = dataMoverSplit
   )
 
+  // Production P4 KV frontend.  It operates on the same logical address map
+  // as GenMemCmd and shares the physical MM2S engine through an explicit
+  // owner bridge below.  The phase selector is driven from the accepted P4
+  // tile at the attention hookup after AttnSubMod is instantiated.
+  val p4TilePhase = Reg(Bool()) init False
+  val p4KvFetch = new _root_.attn.P4KvFetchFrontend(
+    busWidth = busWidth,
+    maxContext = maxToken,
+    tileTokens = 64,
+    valueBytesPerToken = dim / head
+  )
+  // At the metadata-request acceptance edge the registered phase still
+  // describes the preceding tile.  Select directly from the incoming tile
+  // for that cycle, then use the captured phase for value launch/replay.
+  val p4AddressPhase = Mux(p4KvFetch.io.request.valid,
+    p4KvFetch.io.request.payload.phase, p4TilePhase)
+  p4KvFetch.io.metadataBaseAddress := cmdGen.status.p4AttnHeadBase + Mux(
+    p4AddressPhase, U(cmdGen.mmap.attnVScaleZero_addr, 32 bits), U(cmdGen.mmap.attnKScaleZero_addr, 32 bits))
+  p4KvFetch.io.valueBaseAddress := cmdGen.status.p4AttnHeadBase + Mux(
+    p4AddressPhase, U(cmdGen.mmap.attnVCache_addr, 32 bits), U(cmdGen.mmap.attnKCache_addr, 32 bits))
+  p4KvFetch.io.valueOutputTag := Mux(
+    p4AddressPhase, B(kvCacheBusTag.last, 6 bits), B(kvCacheBusTag.head, 6 bits))
+
+  val p4DmaBridge = new P4DataMoverBridge(busWidth = busWidth)
+  p4DmaBridge.io.legacyCmd << cmdGen.io.mm2sCmd
+  p4DmaBridge.io.p4Cmd << p4KvFetch.io.ddrCmd
+
   val toAxiLite = new Bundle {
     val tokenCnt = out Bits (16 bits)
     val argMaxVld = out Bool()
@@ -341,12 +368,12 @@ class DataPath(
   val s2mmCmdReMap = if (cmdAddrWidth != 32) new AddressRemap(splitBaseAddr._1, splitBaseAddr._2, 32, cmdAddrWidth, cmdGen.mmap.denseWhereToSplit) else null
 
   if (cmdAddrWidth != 32) {
-    mm2sCmdReMap.io.input << cmdGen.io.mm2sCmd
+    mm2sCmdReMap.io.input << p4DmaBridge.io.outCmd
     s2mmCmdReMap.io.input << cmdGen.io.s2mmCmd
     println("first bank:", cmdGen.mmap.denseWhereToSplit, "second bank", cmdGen.mmap.denseTotalMem - cmdGen.mmap.denseWhereToSplit)
   }
 
-  val mm2sCmdLocal = if (cmdAddrWidth == 32) cmdGen.io.mm2sCmd else mm2sCmdReMap.io.output
+  val mm2sCmdLocal = if (cmdAddrWidth == 32) p4DmaBridge.io.outCmd else mm2sCmdReMap.io.output
   val s2mmCmdLocal = if (cmdAddrWidth == 32) cmdGen.io.s2mmCmd else s2mmCmdReMap.io.output
 
   // Physical DataMover transaction terminals. These are assigned in the
@@ -358,13 +385,20 @@ class DataPath(
   val physicalS2mmStatusFire = Bool()
   val physicalDmaError = Bool()
 
+  // Owner-demultiplexed logical response/status consumers are common to the
+  // split and non-split physical implementations.
+  p4DmaBridge.io.legacyResponse >> cmdGen.io.mm2s
+  p4DmaBridge.io.p4Response >> p4KvFetch.io.ddrData
+  p4DmaBridge.io.legacyStatus.ready := True
+  p4DmaBridge.io.p4Status.ready := True
+
   if (dataMoverSplit == 1) {
     dmaMig.io.m_axi_s2mm_aresetn := aresetn
     dmaMig.io.m_axi_mm2s_aresetn := aresetn
     dmaMig.io.m_axis_s2mm_cmdsts_aresetn := aresetn
     dmaMig.io.m_axis_mm2s_cmdsts_aresetn := aresetn
 
-    cmdGen.io.mm2s << dmaMig.io.m_axis_mm2s
+    p4DmaBridge.io.dmaResponse << dmaMig.io.m_axis_mm2s
     dmaMig.io.s_axis_s2mm << cmdGen.io.s2mm.queue(512, latency = 2, forFMax = true)
     dmaMig.io.s_axis_mm2s_cmd.arbitrationFrom(mm2sCmdLocal)
     dmaMig.io.s_axis_mm2s_cmd.data := mm2sCmdLocal.payload
@@ -375,25 +409,26 @@ class DataPath(
     dmaMig.io.m_axi.r.id.removeAssignments()
     dmaMig.io.m_axi.b.id.removeAssignments()
     dmaMig.io.m_axis_s2mm_sts.ready := True
-    dmaMig.io.m_axis_mm2s_sts.ready := True
+    p4DmaBridge.io.dmaStatus.arbitrationFrom(dmaMig.io.m_axis_mm2s_sts)
+    p4DmaBridge.io.dmaStatus.payload := dmaMig.io.m_axis_mm2s_sts.data
     physicalMm2sCmdFire := dmaMig.io.s_axis_mm2s_cmd.fire && speculativeActive
     physicalS2mmCmdFire := dmaMig.io.s_axis_s2mm_cmd.fire && speculativeActive
-    physicalMm2sStatusFire := dmaMig.io.m_axis_mm2s_sts.fire
+    physicalMm2sStatusFire := p4DmaBridge.io.legacyStatus.fire || p4DmaBridge.io.p4Status.fire
     physicalS2mmStatusFire := dmaMig.io.m_axis_s2mm_sts.fire
     physicalDmaError := dmaMig.io.mm2s_err || dmaMig.io.s2mm_err
   }
 
   if (dataMoverSplit > 1) {
     dmaHp.aresetn := aresetn
-    dmaHp.io.mm2s >> cmdGen.io.mm2s
+    dmaHp.io.mm2s >> p4DmaBridge.io.dmaResponse
     dmaHp.io.s2mm << cmdGen.io.s2mm
     dmaHp.io.mm2sCmd << mm2sCmdLocal
     dmaHp.io.s2mmCmd << s2mmCmdLocal
-    dmaHp.io.mm2sStatus.ready := True
+    dmaHp.io.mm2sStatus >> p4DmaBridge.io.dmaStatus
     dmaHp.io.s2mmStatus.ready := True
     physicalMm2sCmdFire := dmaHp.io.mm2sCmd.fire && speculativeActive
     physicalS2mmCmdFire := dmaHp.io.s2mmCmd.fire && speculativeActive
-    physicalMm2sStatusFire := dmaHp.io.mm2sStatus.fire
+    physicalMm2sStatusFire := p4DmaBridge.io.legacyStatus.fire || p4DmaBridge.io.p4Status.fire
     physicalS2mmStatusFire := dmaHp.io.s2mmStatus.fire
     physicalDmaError := dmaHp.io.mm2sError || dmaHp.io.s2mmError
     (m_axi_hp, dmaHp.io.m_axi).zipped.foreach(_ << _)
@@ -704,7 +739,19 @@ class DataPath(
   //  axi.int.bus.tuser.addAttribute("mark_debug", "true")
   //  engine.io.scalarOut.addAttribute("mark_debug", "true")
 
-  cmdGen.local.bus >> axi.io.bus
+  // P4 value tiles reuse the production cache-tagged INT8 dequant path.  The
+  // frontend owns the bus for its full metadata/value transaction so legacy
+  // responses cannot interleave with a tile and perturb KvCacheCase state.
+  val p4BusSelect = p4KvFetch.io.busy
+  axi.io.bus.valid := Mux(p4BusSelect, p4KvFetch.io.value.valid, cmdGen.local.bus.valid)
+  axi.io.bus.data := Mux(p4BusSelect, p4KvFetch.io.value.data, cmdGen.local.bus.data)
+  axi.io.bus.dest := Mux(p4BusSelect, p4KvFetch.io.value.dest, cmdGen.local.bus.dest)
+  axi.io.bus.last := Mux(p4BusSelect, p4KvFetch.io.value.last, cmdGen.local.bus.last)
+  // Both local streams are full-width; GenMemCmd's local bus intentionally
+  // omits TKEEP, so synthesize the all-byte-valid mask at this boundary.
+  axi.io.bus.keep.setAll()
+  p4KvFetch.io.value.ready := axi.io.bus.ready && p4BusSelect
+  cmdGen.local.bus.ready := axi.io.bus.ready && !p4BusSelect
   node.io.indexOut >> cmdGen.local.index
   cmdGen.local.kvBus.arbitrationFrom(szPacker.io.kvBus)
   cmdGen.local.kvBus.last := szPacker.io.kvBus.last
@@ -724,14 +771,28 @@ class DataPath(
   cmdGen.status.perfKvReadBeat := axi.int.bus.fire &&
     kvCacheBusTag.map(tag => axi.int.bus.tuser === tag).reduce(_ || _)
 
-  // P4 production manager hookup is intentionally explicit.  Until its KV
-  // requester and V-AXPY terminal event are connected, keep the speculative
-  // controller inert so the legacy attention datapath remains unchanged.
-  attn.io.p4.start.valid := False
-  attn.io.p4.start.payload.k := 1
-  attn.io.p4.start.payload.committedTokens := 0
-  attn.io.p4.tile.ready := False
-  attn.io.p4.softmax.ready := False
+  // Start exactly once for each level assertion from the transformer
+  // sequencer.  Waiting for the previous physical MM2S epoch to drain means
+  // the first P4 response cannot be preceded by a stale legacy frame.
+  val p4StartIssued = Reg(Bool()) init False
+  when(!speculativeAttentionRequest) { p4StartIssued.clear() }
+  attn.io.p4.start.valid := speculativeAttentionRequest && !p4StartIssued &&
+    physicalMm2sTracker.io.drained && !p4KvFetch.io.busy
+  attn.io.p4.start.payload.k := speculativeK
+  attn.io.p4.start.payload.committedTokens := speculativeBase
+  when(attn.io.p4.start.fire) { p4StartIssued.set() }
+
+  p4KvFetch.io.request << attn.io.p4.tile
+  when(attn.io.p4.tile.fire) { p4TilePhase := attn.io.p4.tile.phase }
+  // SerialSafeSoftmax has no input backpressure; accepting the control token
+  // latches its causal length inside AttnSubMod.
+  attn.io.p4.softmax.ready := True
+  attn.io.p4.transportTileDone.valid := p4KvFetch.io.done.valid && p4TilePhase
+  attn.io.p4.transportTileDone.payload := p4KvFetch.io.done.payload
+  attn.io.p4.vBatchDone := speculativeAttentionDone
+  attn.io.p4.transportError := p4DmaBridge.io.error || p4KvFetch.io.error
+  attn.io.p4.transportErrorCode := Mux(p4DmaBridge.io.error,
+    U(8, 4 bits), p4KvFetch.io.errorCode)
   attn.io.p4.vAxpyTileOut.valid := False
   attn.io.p4.vAxpyTileOut.fragment.tdata.clearAll()
   attn.io.p4.vAxpyTileOut.fragment.tuser.clearAll()
@@ -832,6 +893,13 @@ class DataPath(
   szPacker.io.qOut << attn.io.afterQuant
   szPacker.io.kSzOut >> axi.io.kSzOut
   szPacker.io.vSzOut >> axi.io.vSzOut
+  axi.io.p4Enable := p4KvFetch.io.busy
+  axi.io.p4KSzOut.valid := p4KvFetch.io.metadata.valid && !p4TilePhase
+  axi.io.p4KSzOut.payload := p4KvFetch.io.metadata.payload
+  axi.io.p4VSzOut.valid := p4KvFetch.io.metadata.valid && p4TilePhase
+  axi.io.p4VSzOut.payload := p4KvFetch.io.metadata.payload
+  p4KvFetch.io.metadata.ready := Mux(p4TilePhase,
+    axi.io.p4VSzOut.ready, axi.io.p4KSzOut.ready)
   szPacker.io.nextLayer := stateGen.status.nextLayer
   szPacker.io.tokenIndexFlow.valid := tokenControlFire
   szPacker.io.tokenIndexFlow.payload := tokenKind
@@ -875,12 +943,13 @@ class DataPath(
   toAxiLite.projectionError := stateGen.status.projectionError
   toAxiLite.projectionDoneTag := cmdGen.status.projectionDoneTag
   toAxiLite.projectionDoneLayer := cmdGen.status.projectionDoneLayer
-  toAxiLite.attentionDone := speculativeAttentionDone
+  toAxiLite.attentionDone := attn.io.p4.done
   toAxiLite.mlpActivationDone := sOut.mlpActivationDone && speculativeActive
   toAxiLite.speculativeKvWritesDrained := cmdGen.status.speculativeKvWritesDrained &&
     physicalMm2sTracker.io.drained && physicalS2mmTracker.io.drained
   toAxiLite.speculativeKvWriteError := cmdGen.status.speculativeKvWriteError ||
-    physicalMm2sTracker.io.error || physicalS2mmTracker.io.error || physicalDmaError
+    physicalMm2sTracker.io.error || physicalS2mmTracker.io.error || physicalDmaError ||
+    p4DmaBridge.io.error || p4KvFetch.io.error
   toAxiLite.descriptorActive := cmdGen.status.descriptorActive
   toAxiLite.perfWeightBytes := cmdGen.status.perfWeightBytes
   toAxiLite.perfKvReadBytes := cmdGen.status.perfKvReadBytes
